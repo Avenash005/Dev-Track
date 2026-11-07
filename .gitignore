@@ -1,11 +1,14 @@
 # Dependencies
 node_modules/
+**/node_modules/
 .pnp
 .pnp.js
 
 # Production build outputs
 dist/
+**/dist/
 build/
+**/build/
 
 # Environment files (CRITICAL SECURITY)
 .env
@@ -13,6 +16,8 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+**/.env
+**/.env.local
 
 # Logs
 npm-debug.log*
