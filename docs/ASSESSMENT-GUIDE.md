@@ -179,3 +179,4 @@ This guide provides a comprehensive preparation script covering all **22 core cu
 - **Examiner Question**: *"How do you verify that your API meets requirements?"*
 - **Student Answer**:
   > *"We execute `node test-api.js`, which runs an automated 28-assertion test suite verifying health checks, registration, token generation, 409 duplicate handling, 401 unauthorized rejection, project CRUD, task CRUD, dashboard statistics, and AI chat. Every assertion must pass with 0 failures."*
+

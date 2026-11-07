@@ -24,3 +24,4 @@ router.put('/:id', validateProject, projectController.updateProject);
 router.delete('/:id', projectController.deleteProject);
 
 export default router;
+

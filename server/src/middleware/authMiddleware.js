@@ -30,3 +30,4 @@ export function authenticateToken(req, res, next) {
     return apiResponse.unauthorized(res, 'Invalid authentication token signature.');
   }
 }
+

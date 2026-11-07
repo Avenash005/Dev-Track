@@ -20,3 +20,4 @@ router.get('/conversations/:id', aiController.getConversationById);
 router.delete('/conversations/:id', aiController.deleteConversation);
 
 export default router;
+

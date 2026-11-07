@@ -15,3 +15,4 @@ router.post('/login', validateLogin, authController.login);
 router.get('/me', authenticateToken, authController.getMe);
 
 export default router;
+

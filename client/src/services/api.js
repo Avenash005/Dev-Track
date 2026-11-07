@@ -86,3 +86,4 @@ export const api = {
     deleteConversation: (id) => request(`/ai/conversations/${id}`, { method: 'DELETE' }),
   },
 };
+

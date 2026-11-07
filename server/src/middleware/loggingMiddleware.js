@@ -24,3 +24,4 @@ export function loggingMiddleware(req, res, next) {
 
   next();
 }
+

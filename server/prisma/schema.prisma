@@ -53,3 +53,4 @@ model Task {
   @@index([project_id])
   @@map("tasks")
 }
+

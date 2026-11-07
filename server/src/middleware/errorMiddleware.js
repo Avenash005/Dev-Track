@@ -25,3 +25,4 @@ export function errorHandler(err, req, res, next) {
 
   return apiResponse.error(res, message, statusCode, err.stack);
 }
+

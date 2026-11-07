@@ -136,3 +136,4 @@ App.jsx (AuthProvider, DataProvider, BrowserRouter)
 4. **CORS Hardening**: Access is strictly limited to authorized client origins (`http://localhost:5173`).
 5. **Payload Limiting**: Express JSON parser enforces a strict `1MB` payload boundary to prevent memory exhaustion attacks.
 6. **Data Leakage Prevention**: Centralized logging sanitizes sensitive headers and bodies, ensuring credentials and secret keys are never written to disk or console.
+

@@ -121,3 +121,4 @@ export function validateChat(req, res, next) {
   req.body.message = message.trim();
   next();
 }
+

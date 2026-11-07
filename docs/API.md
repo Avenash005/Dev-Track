@@ -215,3 +215,4 @@ All task endpoints require the `Authorization: Bearer <token>` header.
 ### 5.3 Delete Conversation
 - **Endpoint**: `DELETE /api/ai/conversations/:id`
 - **Response**: `204 No Content`
+
