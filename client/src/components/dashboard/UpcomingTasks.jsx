@@ -94,3 +94,4 @@ export default function UpcomingTasks({ tasks, onToggleStatus, onNewTask }) {
     </div>
   );
 }
+

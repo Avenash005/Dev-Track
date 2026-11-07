@@ -95,3 +95,4 @@ export default function RecentProjects({ projects, tasks, onNewProject }) {
     </div>
   );
 }
+

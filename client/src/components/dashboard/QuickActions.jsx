@@ -65,3 +65,4 @@ export default function QuickActions({ onNewProject, onNewTask }) {
     </div>
   );
 }
+
