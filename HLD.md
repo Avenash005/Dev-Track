@@ -158,10 +158,52 @@ sequenceDiagram
 
 ---
 
-## 6. Infrastructure & Deployment Topology
+## 6. Infrastructure & Deployment Topology (Docker Multi-Service Architecture)
+
+The entire full-stack application is containerized and orchestrated via [`docker-compose.yml`](file:///d:/Project/docker-compose.yml) across 5 interconnected containers on an isolated bridge network (`devtrack-network`):
+
+```mermaid
+flowchart TD
+    subgraph Host["Host Machine"]
+        ClientPort["Host Port :80 / :5173"]
+        BackendPort["Host Port :5000"]
+        DBPort1["Host Port :5432"]
+        DBPort2["Host Port :27017"]
+        AIPort["Host Port :11434"]
+    end
+
+    subgraph DockerBridge["devtrack-network (Virtual Bridge DNS)"]
+        Frontend["frontend: nginx:1.27-alpine\n(Reverse proxy & SPA runner)"]
+        Backend["backend: node:20-alpine\n(Express REST API & SSR engine)"]
+        Postgres["postgres: postgres:16-alpine\n(Relational Database)"]
+        MongoDB["mongodb: mongo:7.0\n(Document Database)"]
+        Ollama["ollama: ollama/ollama\n(Local LLM Daemon)"]
+    end
+
+    subgraph Volumes["Docker Named Volumes (Host Persistent Storage)"]
+        VPostgres[("devtrack_postgres_data\n/var/lib/postgresql/data")]
+        VMongo[("devtrack_mongo_data\n/data/db")]
+        VOllama[("devtrack_ollama_models\n/root/.ollama")]
+    end
+
+    ClientPort --> Frontend
+    BackendPort --> Backend
+    DBPort1 --> Postgres
+    DBPort2 --> MongoDB
+    AIPort --> Ollama
+
+    Frontend -->|Internal Proxy /api/| Backend
+    Backend -->|DNS: postgres:5432| Postgres
+    Backend -->|DNS: mongodb:27017| MongoDB
+    Backend -->|DNS: http://ollama:11434| Ollama
+
+    Postgres --> VPostgres
+    MongoDB --> VMongo
+    Ollama --> VOllama
+```
 
 - **Monorepo Workspaces**: Orchestrated via npm workspaces (`package.json`).
-- **Database Provisioning**: Declarative multi-container setup via [`docker-compose.yml`](file:///d:/Project/docker-compose.yml).
+- **Database Provisioning**: Declarative multi-container setup via [`docker-compose.yml`](file:///d:/Project/docker-compose.yml) with health-checked dependency graphs (`condition: service_healthy`).
 - **Automated CI/CD**: GitHub Actions workflow ([`.github/workflows/ci.yml`](file:///d:/Project/.github/workflows/ci.yml)) tests every pull request and push to `main` and `develop`.
 
 ---

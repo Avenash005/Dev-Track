@@ -216,3 +216,127 @@ All task endpoints require the `Authorization: Bearer <token>` header.
 - **Endpoint**: `DELETE /api/ai/conversations/:id`
 - **Response**: `204 No Content`
 
+---
+
+## 6. Payment & Subscription Endpoints (`/api/payment`)
+
+### 6.1 Get Subscription Plans
+- **Endpoint**: `GET /api/payment/plans`
+- **Auth**: None (Public)
+- **Response**: `200 OK`
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "free",
+        "name": "Free Plan",
+        "price": 0,
+        "priceFormatted": "₹0",
+        "amount": 0,
+        "currency": "INR",
+        "features": ["Up to 3 active projects", "25 tasks per project", "Standard JS modules"]
+      },
+      {
+        "id": "pro",
+        "name": "Pro Plan",
+        "price": 149,
+        "priceFormatted": "₹149",
+        "amount": 14900,
+        "currency": "INR",
+        "features": ["Unlimited projects & tasks", "Accelerated Ollama AI", "Milestone velocity reports"]
+      },
+      {
+        "id": "premium",
+        "name": "Premium Plan",
+        "price": 299,
+        "priceFormatted": "₹299",
+        "amount": 29900,
+        "currency": "INR",
+        "features": ["Everything in Pro", "1-on-1 viva defense simulator", "Docker Compose sandboxes"]
+      }
+    ]
+  }
+  ```
+
+### 6.2 Create Razorpay Order
+- **Endpoint**: `POST /api/payment/create-order`
+- **Auth**: `Bearer <token>`
+- **Body**:
+  ```json
+  {
+    "planId": "pro"
+  }
+  ```
+- **Response**: `201 Created`
+  ```json
+  {
+    "success": true,
+    "data": {
+      "orderId": "order_test_1794029898681_200f2253",
+      "amount": 14900,
+      "currency": "INR",
+      "planId": "pro",
+      "planName": "Pro Plan",
+      "keyId": "rzp_test_DevTrackKey2026"
+    }
+  }
+  ```
+
+### 6.3 Verify Payment Signature
+- **Endpoint**: `POST /api/payment/verify`
+- **Auth**: `Bearer <token>`
+- **Body**:
+  ```json
+  {
+    "razorpay_order_id": "order_test_1794029898681_200f2253",
+    "razorpay_payment_id": "pay_test_987654321",
+    "razorpay_signature": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+  ```
+- **Responses**:
+  - `200 OK`: Valid HMAC-SHA256 signature; user subscription updated to Pro.
+  - `400 Bad Request`: Cryptographic signature mismatch or tampered payload.
+
+### 6.4 Handle Payment Failure / Cancellation
+- **Endpoint**: `POST /api/payment/failure`
+- **Auth**: `Bearer <token>`
+- **Body**:
+  ```json
+  {
+    "razorpay_order_id": "order_test_1794029898681_200f2253",
+    "reason": "Payment cancelled by user in checkout popup."
+  }
+  ```
+- **Response**: `200 OK`
+
+### 6.5 Get User Subscription Status
+- **Endpoint**: `GET /api/payment/subscription`
+- **Auth**: `Bearer <token>`
+- **Response**: `200 OK`
+  ```json
+  {
+    "success": true,
+    "data": {
+      "subscription": {
+        "id": "sub-1794029898",
+        "plan": "pro",
+        "status": "ACTIVE",
+        "startDate": "2026-11-07T10:00:00.000Z",
+        "endDate": "2026-12-07T10:00:00.000Z"
+      },
+      "paymentHistory": []
+    }
+  }
+  ```
+
+---
+
+## 7. Server-Side Rendered (SSR) Public Routes
+
+| Route | Method | Description | Content-Type | Pre-Render Engine |
+|---|---|---|---|---|
+| `/` | `GET` | Public Landing Page with pre-rendered hero statistics, feature matrix, and interactive FAQ | `text/html; charset=utf-8` | `react-dom/server` + hydration |
+| `/explore` | `GET` | Public Projects Catalog pre-rendered from active database records | `text/html; charset=utf-8` | `react-dom/server` |
+| `/p/:id` | `GET` | Individual Project Details showcase with pre-rendered milestone tasks and velocity score | `text/html; charset=utf-8` | `react-dom/server` + hydration |
+

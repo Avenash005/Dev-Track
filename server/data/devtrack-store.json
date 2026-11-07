@@ -55,6 +55,14 @@
       "password_hash": "$2a$10$DsYaVDK30rBzAUz/17iFAuSw1BkpU0efB3SPg3xJmshfpEJU5WS7S",
       "created_at": "2026-11-07T05:38:06.462Z",
       "updated_at": "2026-11-07T05:38:06.462Z"
+    },
+    {
+      "id": "usr-1794032369513-298",
+      "name": "Jordan Lee",
+      "email": "student_1794032369418@university.edu",
+      "password_hash": "$2a$10$01j4JB5xpbjGp1g7ma/ZKe3Dyx4k1cZk32z.v2xwBHG1.nDM6TdbC",
+      "created_at": "2026-11-07T06:19:29.513Z",
+      "updated_at": "2026-11-07T06:19:29.513Z"
     }
   ],
   "projects": [
@@ -84,6 +92,16 @@
   "conversations": [],
   "subscriptions": [
     {
+      "id": "sub-1794032381803-581",
+      "user_id": "usr-1794032369513-298",
+      "plan": "pro",
+      "status": "ACTIVE",
+      "start_date": "2026-11-07T06:19:41.803Z",
+      "end_date": "2026-12-07T06:19:41.803Z",
+      "created_at": "2026-11-07T06:19:41.803Z",
+      "updated_at": "2026-11-07T06:19:41.803Z"
+    },
+    {
       "id": "sub-1794029898690-881",
       "user_id": "usr-1794029886462-235",
       "plan": "pro",
@@ -95,6 +113,21 @@
     }
   ],
   "payments": [
+    {
+      "id": "pay-1794032381791-41",
+      "user_id": "usr-1794032369513-298",
+      "razorpay_order_id": "order_test_1794032381791_51769bdf",
+      "razorpay_payment_id": "pay_test_1794032381800",
+      "razorpay_signature": "9df8e891c6d58f6be57d70f6b7c0ebabae9c907c9ed639b24df2942ff959de07",
+      "amount": 14900,
+      "currency": "INR",
+      "plan": "pro",
+      "status": "FAILED",
+      "created_at": "2026-11-07T06:19:41.791Z",
+      "updated_at": "2026-11-07T06:19:41.811Z",
+      "error_code": "PAYMENT_FAILED",
+      "error_description": "Payment rejected."
+    },
     {
       "id": "pay-1794029898681-982",
       "user_id": "usr-1794029886462-235",

@@ -219,3 +219,4 @@ if (container) {
   ReactDOM.hydrateRoot(container, e(LandingPageHydrated, { initialData }));
   console.log('[SSR] React hydration successfully completed.');
 }
+

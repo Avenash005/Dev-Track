@@ -23,3 +23,4 @@ router.post('/failure', paymentController.handleFailure);
 router.get('/subscription', paymentController.getSubscription);
 
 export default router;
+

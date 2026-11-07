@@ -22,6 +22,8 @@ DevTrack AI implements a **Polyglot Persistence Architecture**, combining a rela
 ```mermaid
 erDiagram
     USERS ||--o{ PROJECTS : "owns (1:N)"
+    USERS ||--o{ SUBSCRIPTIONS : "has (1:1)"
+    USERS ||--o{ PAYMENTS : "generates (1:N)"
     PROJECTS ||--o{ TASKS : "contains (1:N)"
 
     USERS {
@@ -29,6 +31,33 @@ erDiagram
         string name "Full Name"
         string email UK "Unique Email Address"
         string password_hash "Bcrypt Hashed String"
+        datetime created_at "Default now()"
+        datetime updated_at "Auto-updated timestamp"
+    }
+
+    SUBSCRIPTIONS {
+        string id PK "UUID"
+        string user_id FK "References USERS(id) [ON DELETE CASCADE]"
+        string plan "FREE | PRO | PREMIUM"
+        string status "ACTIVE | CANCELLED | EXPIRED"
+        datetime start_date "Subscription start"
+        datetime end_date "Subscription expiry (+30 days)"
+        datetime created_at "Default now()"
+        datetime updated_at "Auto-updated timestamp"
+    }
+
+    PAYMENTS {
+        string id PK "UUID"
+        string user_id FK "References USERS(id) [ON DELETE CASCADE]"
+        string razorpay_order_id UK "Unique Order ID"
+        string razorpay_payment_id UK "Unique Payment ID"
+        string razorpay_signature "HMAC-SHA256 signature"
+        int amount "Amount in paise (e.g. 14900)"
+        string currency "INR"
+        string plan "pro | premium"
+        string status "CREATED | SUCCESS | FAILED"
+        string error_code "Error reason code"
+        string error_description "Detailed failure note"
         datetime created_at "Default now()"
         datetime updated_at "Auto-updated timestamp"
     }
@@ -60,6 +89,10 @@ erDiagram
 1. **`users.email`**: Marked with `@unique` constraint. Index type: B-Tree.
 2. **`projects.user_id`**: Foreign Key referencing `users.id` with `onDelete: Cascade`. Indexed with `@@index([user_id])` for fast per-user lookups.
 3. **`tasks.project_id`**: Foreign Key referencing `projects.id` with `onDelete: Cascade`. Indexed with `@@index([project_id])` for instant task joins.
+4. **`subscriptions.user_id`**: Foreign Key referencing `users.id` with `onDelete: Cascade`. Indexed with `@@index([user_id])`.
+5. **`payments.user_id`**: Foreign Key referencing `users.id` with `onDelete: Cascade`. Indexed with `@@index([user_id])`.
+6. **`payments.razorpay_order_id`**: Marked with `@unique` constraint and indexed with `@@index([razorpay_order_id])`.
+7. **`payments.razorpay_payment_id`**: Marked with `@unique` constraint.
 
 ### Prisma Schema (`server/prisma/schema.prisma`)
 ```prisma
@@ -72,6 +105,8 @@ model User {
   updated_at    DateTime  @updatedAt
 
   projects      Project[]
+  subscriptions Subscription[]
+  payments      Payment[]
 
   @@map("users")
 }
@@ -107,6 +142,44 @@ model Task {
 
   @@index([project_id])
   @@map("tasks")
+}
+
+model Subscription {
+  id          String    @id @default(uuid())
+  user_id     String
+  plan        String    @default("FREE")
+  status      String    @default("ACTIVE")
+  start_date  DateTime  @default(now())
+  end_date    DateTime?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id                  String   @id @default(uuid())
+  user_id             String
+  razorpay_order_id   String   @unique
+  razorpay_payment_id String?  @unique
+  razorpay_signature  String?
+  amount              Int
+  currency            String   @default("INR")
+  plan                String
+  status              String   @default("CREATED")
+  error_code          String?
+  error_description   String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([razorpay_order_id])
+  @@map("payments")
 }
 ```
 

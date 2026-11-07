@@ -115,3 +115,4 @@ if (container) {
   const initialData = window.__INITIAL_DATA__ || {};
   ReactDOM.hydrateRoot(container, e(PublicProjectPageHydrated, { initialData }));
 }
+
