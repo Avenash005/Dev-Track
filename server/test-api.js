@@ -327,6 +327,116 @@ async function testSuite() {
     });
     assert(failRes.status === 200, `POST /api/payment/failure successfully logged failure record`);
 
+    // =========================================================================
+    // 19. Redis In-Memory Caching & Invalidation Verifications
+    // =========================================================================
+    console.log('\n--- Verifying Redis In-Memory Caching & Invalidation ---');
+
+    // 19.1 Initial read results in Cache Miss (Cold Cache -> DB Fetch)
+    const statsColdRes = await fetch(`${BASE_URL}/dashboard/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(statsColdRes.status === 200, `GET /api/dashboard/stats (cold) returned 200 OK`);
+    assert(statsColdRes.headers.get('x-cache') === 'MISS', `First dashboard stats read returned X-Cache: MISS`);
+
+    // 19.2 Immediate subsequent read results in Cache Hit (Warm Cache -> Redis)
+    const statsWarmRes = await fetch(`${BASE_URL}/dashboard/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(statsWarmRes.status === 200, `GET /api/dashboard/stats (warm) returned 200 OK`);
+    assert(statsWarmRes.headers.get('x-cache') === 'HIT', `Second dashboard stats read returned X-Cache: HIT`);
+
+    // 19.3 Projects list caching: Miss then Hit
+    const projColdRes = await fetch(`${BASE_URL}/projects`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(projColdRes.headers.get('x-cache') === 'MISS', `First projects read returned X-Cache: MISS`);
+
+    const projWarmRes = await fetch(`${BASE_URL}/projects`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(projWarmRes.headers.get('x-cache') === 'HIT', `Second projects read returned X-Cache: HIT`);
+
+    // 19.4 User isolation check: User B does NOT hit User A's cache
+    const userBEmail = `student_b_${Date.now()}@university.edu`;
+    const regBRes = await fetch(`${BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Taylor UserB',
+        email: userBEmail,
+        password: 'securePasswordB123!',
+      }),
+    });
+    const regBData = await regBRes.json();
+    const tokenB = regBData.data?.token;
+
+    const userBStatsRes = await fetch(`${BASE_URL}/dashboard/stats`, {
+      headers: { Authorization: `Bearer ${tokenB}` },
+    });
+    const userBStatsData = await userBStatsRes.json();
+    assert(userBStatsRes.headers.get('x-cache') === 'MISS', `User B cold stats read returned X-Cache: MISS`);
+    assert(userBStatsData.data?.totalProjects === 0, `User B data isolated (totalProjects is 0, not User A's count)`);
+
+    // 19.5 Cache Invalidation on Mutation: Creating a Project invalidates caches
+    const newProjRes = await fetch(`${BASE_URL}/projects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        title: 'Redis Cached Cache-Aside Architecture',
+        description: 'Demonstrating automated cache invalidation on write mutations.',
+        status: 'IN_PROGRESS',
+      }),
+    });
+    const newProjData = await newProjRes.json();
+    const newProjId = newProjData.data?.id;
+    assert(newProjRes.status === 201, `POST /api/projects created project to test invalidation`);
+
+    // Subsequent read of projects list MUST be a MISS (cache was invalidated)
+    const projAfterMutateRes = await fetch(`${BASE_URL}/projects`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(projAfterMutateRes.headers.get('x-cache') === 'MISS', `Projects read after mutation returned X-Cache: MISS (Invalidated)`);
+
+    // Subsequent read of dashboard stats MUST also be a MISS
+    const statsAfterMutateRes = await fetch(`${BASE_URL}/dashboard/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(statsAfterMutateRes.headers.get('x-cache') === 'MISS', `Dashboard stats after project mutation returned X-Cache: MISS`);
+
+    // Next read is warm again
+    const statsReheatedRes = await fetch(`${BASE_URL}/dashboard/stats`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(statsReheatedRes.headers.get('x-cache') === 'HIT', `Dashboard stats re-cached returning X-Cache: HIT`);
+
+    // 19.6 Tasks list caching & mutation invalidation
+    const taskColdRes = await fetch(`${BASE_URL}/tasks`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(taskColdRes.headers.get('x-cache') === 'MISS', `Tasks read (cold) returned X-Cache: MISS`);
+
+    const taskWarmRes = await fetch(`${BASE_URL}/tasks`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert(taskWarmRes.headers.get('x-cache') === 'HIT', `Tasks read (warm) returned X-Cache: HIT`);
+
+    // Clean up created test project
+    await fetch(`${BASE_URL}/projects/${newProjId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    // 19.7 Cache Telemetry & Stats endpoint
+    const cacheStatsRes = await fetch(`${BASE_URL}/cache/stats`);
+    const cacheStatsData = await cacheStatsRes.json();
+    assert(cacheStatsRes.status === 200, `GET /api/cache/stats returned 200 OK`);
+    assert(cacheStatsData.data?.stats?.hits >= 3, `Cache telemetry recorded multiple cache HITs (${cacheStatsData.data?.stats?.hits})`);
+    assert(cacheStatsData.data?.stats?.invalidations >= 2, `Cache telemetry recorded cache invalidation events (${cacheStatsData.data?.stats?.invalidations})`);
+
     console.log(`\n======================================================`);
     console.log(`  Test Results: ${passed} Passed, ${failed} Failed`);
     console.log(`======================================================\n`);

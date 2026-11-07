@@ -39,4 +39,7 @@ export const env = {
   // Razorpay Payment Gateway (Test Mode)
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || 'rzp_test_DevTrackKey2026',
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || 'devtrack_razorpay_secret_test_2026',
+
+  // Redis In-Memory Cache
+  REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
 };

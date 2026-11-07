@@ -63,6 +63,38 @@
       "password_hash": "$2a$10$01j4JB5xpbjGp1g7ma/ZKe3Dyx4k1cZk32z.v2xwBHG1.nDM6TdbC",
       "created_at": "2026-11-07T06:19:29.513Z",
       "updated_at": "2026-11-07T06:19:29.513Z"
+    },
+    {
+      "id": "usr-1794033592898-726",
+      "name": "Jordan Lee",
+      "email": "student_1794033592818@university.edu",
+      "password_hash": "$2a$10$8Y3KHZnLlPknUWOII4zLk.ie9yXnI.a.zdwqXxuvEr6BGBNFxI2ia",
+      "created_at": "2026-11-07T06:39:52.898Z",
+      "updated_at": "2026-11-07T06:39:52.898Z"
+    },
+    {
+      "id": "usr-1794033605273-524",
+      "name": "Taylor UserB",
+      "email": "student_b_1794033605196@university.edu",
+      "password_hash": "$2a$10$lQ6Aj9cGavERXTHaMxO8DuJaqZmUPUXpt2DtayI2sVhid2pOCvHjy",
+      "created_at": "2026-11-07T06:40:05.273Z",
+      "updated_at": "2026-11-07T06:40:05.273Z"
+    },
+    {
+      "id": "usr-1794034116257-950",
+      "name": "Jordan Lee",
+      "email": "student_1794034116179@university.edu",
+      "password_hash": "$2a$10$husjHN/mEwucVgHRwpGVau2CPJZxMrZJuPEt.P489AA1rHGxNuINu",
+      "created_at": "2026-11-07T06:48:36.257Z",
+      "updated_at": "2026-11-07T06:48:36.257Z"
+    },
+    {
+      "id": "usr-1794034125234-127",
+      "name": "Taylor UserB",
+      "email": "student_b_1794034125157@university.edu",
+      "password_hash": "$2a$10$AeyONNerBKRI28yl6AtnjOLchGjrboRYq3ItOoQJLc/GNz7qjmZoe",
+      "created_at": "2026-11-07T06:48:45.234Z",
+      "updated_at": "2026-11-07T06:48:45.234Z"
     }
   ],
   "projects": [
@@ -92,6 +124,26 @@
   "conversations": [],
   "subscriptions": [
     {
+      "id": "sub-1794034125139-530",
+      "user_id": "usr-1794034116257-950",
+      "plan": "pro",
+      "status": "ACTIVE",
+      "start_date": "2026-11-07T06:48:45.139Z",
+      "end_date": "2026-12-07T06:48:45.139Z",
+      "created_at": "2026-11-07T06:48:45.139Z",
+      "updated_at": "2026-11-07T06:48:45.139Z"
+    },
+    {
+      "id": "sub-1794033605179-302",
+      "user_id": "usr-1794033592898-726",
+      "plan": "pro",
+      "status": "ACTIVE",
+      "start_date": "2026-11-07T06:40:05.179Z",
+      "end_date": "2026-12-07T06:40:05.179Z",
+      "created_at": "2026-11-07T06:40:05.179Z",
+      "updated_at": "2026-11-07T06:40:05.179Z"
+    },
+    {
       "id": "sub-1794032381803-581",
       "user_id": "usr-1794032369513-298",
       "plan": "pro",
@@ -113,6 +165,36 @@
     }
   ],
   "payments": [
+    {
+      "id": "pay-1794034125127-434",
+      "user_id": "usr-1794034116257-950",
+      "razorpay_order_id": "order_test_1794034125127_97a8707f",
+      "razorpay_payment_id": "pay_test_1794034125138",
+      "razorpay_signature": "1b9e6266bb5808d6cfef5a140f106dffff9aee8b7e6687192211a0a1e2373d87",
+      "amount": 14900,
+      "currency": "INR",
+      "plan": "pro",
+      "status": "FAILED",
+      "created_at": "2026-11-07T06:48:45.127Z",
+      "updated_at": "2026-11-07T06:48:45.148Z",
+      "error_code": "PAYMENT_FAILED",
+      "error_description": "Payment rejected."
+    },
+    {
+      "id": "pay-1794033605166-869",
+      "user_id": "usr-1794033592898-726",
+      "razorpay_order_id": "order_test_1794033605166_0aba2f13",
+      "razorpay_payment_id": "pay_test_1794033605177",
+      "razorpay_signature": "1e9ad4ce3941fb1df1a0885b8f99542d27660dab85004e353b1047109cd2a108",
+      "amount": 14900,
+      "currency": "INR",
+      "plan": "pro",
+      "status": "FAILED",
+      "created_at": "2026-11-07T06:40:05.166Z",
+      "updated_at": "2026-11-07T06:40:05.187Z",
+      "error_code": "PAYMENT_FAILED",
+      "error_description": "Payment rejected."
+    },
     {
       "id": "pay-1794032381791-41",
       "user_id": "usr-1794032369513-298",

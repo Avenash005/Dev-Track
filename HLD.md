@@ -30,9 +30,10 @@ flowchart TD
         APIServer["Express.js REST API"]
     end
 
-    subgraph DataLayer["Storage Tier"]
+    subgraph DataLayer["Storage & Caching Tier"]
         PostgresDB[("PostgreSQL Database\n(Users, Projects, Tasks)")]
         MongoDB[("MongoDB Database\n(Chat Threads & Messages)")]
+        RedisCache[("Redis 7 In-Memory Cache\n(Sub-ms Key-Value Store)")]
         LocalStore[("Resilient Local Engine\n(devtrack-store.json)")]
     end
 
@@ -46,6 +47,7 @@ flowchart TD
     WebUI -->|RESTful JSON Calls / Bearer JWT on :5000| APIServer
     APIServer -->|Prisma Client| PostgresDB
     APIServer -->|Mongoose ODM| MongoDB
+    APIServer -->|Cache-Aside (node-redis)| RedisCache
     APIServer -.->|Automatic Fallback| LocalStore
     APIServer -->|Local HTTP Proxy| OllamaEngine
     APIServer -->|Test Order Creation & HMAC Verify| RazorpayGateway["Razorpay Test Gateway"]
@@ -69,9 +71,10 @@ flowchart LR
         Middleware --> Services
     end
 
-    subgraph DatabaseContainers["Database Subsystems"]
+    subgraph DatabaseContainers["Database & Cache Subsystems"]
         PG["PostgreSQL Container\nport: 5432"]
         MG["MongoDB Container\nport: 27017"]
+        RD["Redis 7 Container\nport: 6379"]
     end
 
     subgraph HostDaemons["Host Daemon"]
@@ -81,6 +84,7 @@ flowchart LR
     SPA -->|HTTP / JSON (Port 5000)| Router
     Services -->|Prisma Connection Pool| PG
     Services -->|Mongoose Connection Pool| MG
+    Services -->|TCP Socket (node-redis)| RD
     Services -->|HTTP Client (Fetch)| OL
 ```
 
@@ -160,7 +164,7 @@ sequenceDiagram
 
 ## 6. Infrastructure & Deployment Topology (Docker Multi-Service Architecture)
 
-The entire full-stack application is containerized and orchestrated via [`docker-compose.yml`](file:///d:/Project/docker-compose.yml) across 5 interconnected containers on an isolated bridge network (`devtrack-network`):
+The entire full-stack application is containerized and orchestrated via [`docker-compose.yml`](file:///d:/Project/docker-compose.yml) across 6 interconnected containers on an isolated bridge network (`devtrack-network`):
 
 ```mermaid
 flowchart TD
@@ -169,6 +173,7 @@ flowchart TD
         BackendPort["Host Port :5000"]
         DBPort1["Host Port :5432"]
         DBPort2["Host Port :27017"]
+        CachePort["Host Port :6379"]
         AIPort["Host Port :11434"]
     end
 
@@ -177,12 +182,14 @@ flowchart TD
         Backend["backend: node:20-alpine\n(Express REST API & SSR engine)"]
         Postgres["postgres: postgres:16-alpine\n(Relational Database)"]
         MongoDB["mongodb: mongo:7.0\n(Document Database)"]
+        Redis["redis: redis:7-alpine\n(In-Memory Cache)"]
         Ollama["ollama: ollama/ollama\n(Local LLM Daemon)"]
     end
 
     subgraph Volumes["Docker Named Volumes (Host Persistent Storage)"]
         VPostgres[("devtrack_postgres_data\n/var/lib/postgresql/data")]
         VMongo[("devtrack_mongo_data\n/data/db")]
+        VRedis[("devtrack_redis_data\n/data")]
         VOllama[("devtrack_ollama_models\n/root/.ollama")]
     end
 
@@ -190,15 +197,18 @@ flowchart TD
     BackendPort --> Backend
     DBPort1 --> Postgres
     DBPort2 --> MongoDB
+    CachePort --> Redis
     AIPort --> Ollama
 
     Frontend -->|Internal Proxy /api/| Backend
     Backend -->|DNS: postgres:5432| Postgres
     Backend -->|DNS: mongodb:27017| MongoDB
+    Backend -->|DNS: redis:6379| Redis
     Backend -->|DNS: http://ollama:11434| Ollama
 
     Postgres --> VPostgres
     MongoDB --> VMongo
+    Redis --> VRedis
     Ollama --> VOllama
 ```
 
@@ -276,3 +286,59 @@ sequenceDiagram
         Client-->>Student: Displays security rejection alert
     end
 ```
+
+---
+
+## 9. Redis In-Memory Caching Subsystem Architecture
+
+DevTrack AI integrates Redis 7 as an enterprise-grade caching tier adhering to the **Cache-Aside** design pattern:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as React Client / Student
+    participant Express as Express Controller
+    participant Cache as CacheService (node-redis)
+    participant Redis as Redis 7 (In-Memory)
+    participant DB as PostgreSQL (Prisma)
+
+    rect rgb(24, 24, 27)
+    note over Client, DB: 1. Read Flow (Cache-Aside with Sub-ms Hit)
+    Client->>Express: GET /api/dashboard/stats (Bearer JWT)
+    Express->>Cache: get("devtrack:user:{userId}:dashboard:stats")
+    Cache->>Redis: GET key
+    alt Cache Hit (Key exists & TTL valid)
+        Redis-->>Cache: Serialized JSON string
+        Cache-->>Express: Deserialized Stats Object
+        Express-->>Client: 200 OK (X-Cache: HIT)
+    else Cache Miss (Key absent or expired)
+        Redis-->>Cache: null
+        Cache-->>Express: null
+        Express->>DB: Query User Projects & Tasks Aggregates
+        DB-->>Express: Computed Stats
+        Express->>Cache: set("devtrack:user:{userId}:dashboard:stats", stats, 300)
+        Cache->>Redis: SETEX key 300 seconds JSON
+        Express-->>Client: 200 OK (X-Cache: MISS)
+    end
+    end
+
+    rect rgb(24, 24, 27)
+    note over Client, DB: 2. Write Mutation Flow (Automated Cascade Invalidation)
+    Client->>Express: PUT /api/tasks/:id (status: "COMPLETED")
+    Express->>DB: UPDATE Task WHERE id = :id AND user_id = :userId
+    DB-->>Express: Updated Task
+    Express->>Cache: invalidateTaskCaches(userId)
+    par Parallel Invalidation
+        Cache->>Redis: DEL devtrack:user:{userId}:tasks:* (via SCAN)
+        Cache->>Redis: DEL devtrack:user:{userId}:projects:* (rate changes)
+        Cache->>Redis: DEL devtrack:user:{userId}:dashboard:stats
+    end
+    Express-->>Client: 200 OK (Updated Task Payload)
+    end
+```
+
+### Key Design Pillars
+1. **Multi-Tenant User Isolation**: Every cache key enforces the schema `devtrack:user:{userId}:<resource>:<identifier>`. No user can ever query or purge another user's cache keys.
+2. **Deterministic Time-To-Live (TTL)**: Keys expire automatically (Dashboard = 300s, Projects = 300s, Tasks = 120s), eliminating zombie cache keys and memory bloat.
+3. **Graceful Fallback**: If Redis crashes or is offline during local evaluation, `redis.js` switches transparently to an in-memory Map cache, preserving 100% API availability.
+

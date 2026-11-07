@@ -1,6 +1,6 @@
 # DevTrack AI — Student Assessment Preparation Guide & Demonstration Script
 
-This guide provides a comprehensive preparation script covering all **25 core curriculum topics** (including Server-Side Rendering, Payment Gateway Integration, and Docker Containerization) evaluated during technical presentations, code reviews, and viva examinations.
+This guide provides a comprehensive preparation script covering all **26 core curriculum topics** (including Server-Side Rendering, Payment Gateway Integration, Docker Containerization, and Redis In-Memory Caching) evaluated during technical presentations, code reviews, and viva examinations.
 
 ---
 
@@ -178,7 +178,7 @@ This guide provides a comprehensive preparation script covering all **25 core cu
 - **Where to show**: `server/test-api.js`.
 - **Examiner Question**: *"How do you verify that your API meets requirements?"*
 - **Student Answer**:
-  > *"We execute `node test-api.js`, which runs an automated 52-assertion test suite verifying health checks, registration, token generation, 409 duplicate handling, 401 unauthorized rejection, project CRUD, task CRUD, dashboard statistics, AI chat, SSR public HTML pre-rendering, and Razorpay payment order creation, signature verification, tampering defense, and subscription updates. Every assertion must pass with 0 failures."*
+  > *"We execute `node test-api.js`, which runs an automated 69-assertion test suite verifying health checks, registration, token generation, 409 duplicate handling, 401 unauthorized rejection, project CRUD, task CRUD, dashboard statistics, AI chat, SSR public HTML pre-rendering, Razorpay payment order creation, signature verification, tampering defense, subscription updates, and Redis in-memory caching (cache hits, misses, TTL, user isolation, and cascade invalidations). Every assertion must pass with 0 failures."*
 
 ---
 
@@ -203,6 +203,14 @@ This guide provides a comprehensive preparation script covering all **25 core cu
 - **Examiner Question**: *"Explain how your multi-service Docker architecture operates and how containers discover one another."*
 - **Student Answer**:
   > *"DevTrack AI defines 5 distinct services in `docker-compose.yml`: `frontend` (React + Vite compiled into a multi-stage Nginx image), `backend` (Node.js 20 Express API running as a non-root `node` user with platform-generated Prisma client), `postgres` (PostgreSQL 16), `mongodb` (MongoDB 7.0), and `ollama` (local LLM runtime). All containers are attached to a shared bridge network (`devtrack-network`). Containers discover and route to one another using internal Docker DNS service names (e.g. `postgresql://postgres:postgres@postgres:5432/devtrack_db` and `mongodb://mongodb:27017/devtrack_ai`). Nginx on the frontend reverse proxies `/api/` calls directly to `http://backend:5000/api/`, eliminating cross-origin browser issues. Service dependencies use `condition: service_healthy` so the backend only launches when PostgreSQL and MongoDB pass their respective health checks."*
+
+---
+
+### Topic 26: Redis In-Memory Caching & Cache-Aside Invalidation
+- **Where to show**: `server/src/config/redis.js`, `server/src/services/cacheService.js`, `server/src/controllers/dashboardController.js`, `server/src/controllers/projectController.js`, `server/src/controllers/taskController.js`, `docker-compose.yml` (redis service).
+- **Examiner Question**: *"Explain your caching strategy. How do you ensure cache consistency when data changes, and how do you prevent cross-tenant data leaks?"*
+- **Student Answer**:
+  > *"We implement the Cache-Aside (lazy loading) pattern using Redis 7. For read operations (such as `GET /api/dashboard/stats`, `GET /api/projects`, `GET /api/tasks`), Express inspects Redis first using `cacheService`. On a cache hit, we return the cached JSON in sub-millisecond time with header `X-Cache: HIT`. On a cache miss, we query PostgreSQL, store the serialized payload in Redis with a Time-To-Live (TTL) of 120s–300s, and return `X-Cache: MISS`.\n\nTo prevent cross-tenant data leaks, all keys are strictly namespaced with the authenticated user's UUID (`devtrack:user:{userId}:...`), ensuring User A can never access User B's cached metrics. To maintain cache consistency and prevent stale data, write operations (`POST`, `PUT`, `DELETE`, status toggles) immediately write to PostgreSQL and trigger automated cascade invalidations via `delPattern()`. For example, modifying a task deletes `devtrack:user:{userId}:tasks:*`, `devtrack:user:{userId}:projects:*` (since project completion percentage updates), and `devtrack:user:{userId}:dashboard:stats`. Furthermore, if Redis is temporarily offline, our client employs an in-memory fallback cache so the Express API never crashes."*
 
 ---
 
@@ -277,4 +285,71 @@ This guide provides a comprehensive preparation script covering all **25 core cu
   - To stop containers safely preserving database volumes: `docker compose down`
   - To destroy containers and delete persistent volumes: `docker compose down -v`
 - **Reference**: [`README.md`](file:///d:/Project/README.md) Section 8.7.
+
+---
+
+## Technical Viva Defense: Redis In-Memory Caching (10 Questions & Answers)
+
+### Question 1: What is Redis?
+- **Answer**: Redis (Remote Dictionary Server) is an open-source, in-memory data structure store used as a distributed database, cache, message broker, and streaming engine. Unlike disk-bound relational databases, Redis keeps all active dataset structures directly in random-access memory (RAM), delivering read and write operations with sub-millisecond response latency.
+- **Reference**: [`server/src/config/redis.js`](file:///d:/Project/server/src/config/redis.js) lines 1-40.
+
+### Question 2: Why is caching useful in DevTrack AI?
+- **Answer**: In software engineering management tools like DevTrack AI, read traffic vastly exceeds write traffic (e.g. students viewing dashboards, projects, and task lists). Computing dashboard metrics requires multiple relational aggregations (`COUNT`, `WHERE status = 'COMPLETED'`, calculating completion percentage). Caching these calculated responses in Redis reduces database CPU load, avoids disk I/O, and drops API response latency from ~45–120ms to <2ms.
+- **Reference**: [`server/src/controllers/dashboardController.js`](file:///d:/Project/server/src/controllers/dashboardController.js) lines 10-38.
+
+### Question 3: What is the difference between a Cache Hit and a Cache Miss?
+- **Answer**:
+  - **Cache Hit**: The application searches Redis for a requested key, finds the active record (TTL not expired), deserializes the JSON string, and returns it immediately to the client with HTTP header `X-Cache: HIT`. No database query is executed.
+  - **Cache Miss**: The key does not exist or has expired. The application queries PostgreSQL via Prisma, serializes the result, writes it to Redis with an expiration TTL, and returns it to the client with HTTP header `X-Cache: MISS`.
+- **Reference**: [`server/src/controllers/dashboardController.js`](file:///d:/Project/server/src/controllers/dashboardController.js) lines 15-32.
+
+### Question 4: What is TTL (Time-To-Live) and why is it essential?
+- **Answer**: Time-To-Live is an integer threshold in seconds attached to a Redis key specifying when Redis should automatically evict the key from memory (`SET key value EX ttlSeconds`). TTL is essential because:
+  1. It acts as an automated safety net ensuring data does not remain stale indefinitely if an invalidation event is somehow missed.
+  2. It bounds memory growth in Redis, preventing RAM exhaustion on long-running servers.
+  - In DevTrack AI: Dashboard Stats = 300s (5m), Projects List = 300s (5m), Tasks List = 120s (2m).
+- **Reference**: [`server/src/services/cacheService.js`](file:///d:/Project/server/src/services/cacheService.js) lines 6-12.
+
+### Question 5: Explain the Cache-Aside (Lazy Loading) pattern.
+- **Answer**: In Cache-Aside, the application code manages all interactions with the cache and the database:
+  - On **Read**: The application checks the cache first. If found, it returns the cached data. If not found, it queries the database, writes the retrieved data to the cache with a TTL, and returns it.
+  - On **Write**: The application writes changes directly to the primary database, and deletes (invalidates) the affected cache keys.
+  - **Advantage**: Data is only loaded into the cache when actually requested (lazy), saving memory by never caching unused records.
+- **Reference**: [`server/src/services/cacheService.js`](file:///d:/Project/server/src/services/cacheService.js) and [`README.md`](file:///d:/Project/README.md) Section 9.2.
+
+### Question 6: How does cache invalidation work upon mutations in DevTrack AI?
+- **Answer**: Whenever an entity is created, updated, deleted, or transitioned:
+  1. The mutation is committed to PostgreSQL (or local store).
+  2. The controller invokes `cacheService.invalidateProjectCaches(userId)` or `invalidateTaskCaches(userId)`.
+  3. Pattern-based deletion (`SCAN` + `DEL`) clears all matching keys (e.g. `devtrack:user:{userId}:tasks:*`).
+  4. Task mutations also invalidate project caches and dashboard stats because task completion dynamically changes project completion percentages and dashboard metrics.
+- **Reference**: [`server/src/services/cacheService.js`](file:///d:/Project/server/src/services/cacheService.js) lines 28-48.
+
+### Question 7: How do you prevent cross-tenant cache leaks between different users?
+- **Answer**: DevTrack AI guarantees multi-tenant cache isolation by incorporating the authenticated student's unique UUID (`req.user.id`) into every generated cache key:
+  - Example: `devtrack:user:usr_98a7bc...:dashboard:stats`
+  - When User B requests dashboard stats, the lookup queries `devtrack:user:usr_b12c3d...:dashboard:stats`. Even if both users request stats simultaneously, their keys never collide, and User B can never read User A's cached metrics.
+- **Reference**: [`server/src/services/cacheService.js`](file:///d:/Project/server/src/services/cacheService.js) lines 14-26.
+
+### Question 8: Compare Redis and PostgreSQL.
+- **Answer**:
+  - **Storage Medium**: Redis stores data in volatile RAM (sub-millisecond access); PostgreSQL writes to disk/SSD with write-ahead logs (ACID persistence).
+  - **Data Model**: Redis is key-value / data-structures (Strings, Hashes, Sets); PostgreSQL is relational (Tables, Rows, Foreign Keys, SQL).
+  - **Role in DevTrack AI**: PostgreSQL is the durable source of truth for users, projects, tasks, and subscriptions; Redis is the ephemeral acceleration layer for high-throughput reads.
+- **Reference**: [`README.md`](file:///d:/Project/README.md) Section 9.5 comparison table.
+
+### Question 9: What happens if Redis goes offline or crashes?
+- **Answer**: DevTrack AI is architected with **Graceful Degradation**. In [`server/src/config/redis.js`](file:///d:/Project/server/src/config/redis.js), if the Redis client fails to connect or disconnects, an error is logged, but the application does not crash. An internal in-memory fallback cache Map automatically handles caching transparently. The Express REST API remains 100% available, and when Redis recovers, the official client automatically reconnects.
+- **Reference**: [`server/src/config/redis.js`](file:///d:/Project/server/src/config/redis.js) lines 18-36.
+
+### Question 10: How do you verify Redis caching in the automated test suite?
+- **Answer**: In [`server/test-api.js`](file:///d:/Project/server/test-api.js) (Section 19), automated assertions verify:
+  1. Cold request returns `X-Cache: MISS`.
+  2. Immediate warm request returns `X-Cache: HIT` with identical payload.
+  3. Request by User B returns `X-Cache: MISS` (proving user isolation).
+  4. Task creation and status toggle invalidate the cache (subsequent GET returns `X-Cache: MISS`).
+  5. `GET /api/cache/stats` returns live telemetry counting hits, misses, and sets.
+- **Reference**: [`server/test-api.js`](file:///d:/Project/server/test-api.js) lines 530-645.
+
 

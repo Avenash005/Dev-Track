@@ -54,7 +54,27 @@ services:
       - devtrack-network
 
   # ----------------------------------------------------------------------------
-  # 3. Ollama Local LLM Service (Offline AI Mentorship)
+  # 3. Redis In-Memory Cache Service (Cache-Aside: Stats, Projects, Tasks)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: devtrack_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - devtrack-network
+
+  # ----------------------------------------------------------------------------
+  # 4. Ollama Local LLM Service (Offline AI Mentorship)
   # ----------------------------------------------------------------------------
   ollama:
     image: ollama/ollama:latest
@@ -74,7 +94,7 @@ services:
       - devtrack-network
 
   # ----------------------------------------------------------------------------
-  # 4. Backend Express API & SSR Service
+  # 5. Backend Express API & SSR Service
   # ----------------------------------------------------------------------------
   backend:
     build:
@@ -91,6 +111,7 @@ services:
       # Use Docker internal service DNS hostnames instead of localhost
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/devtrack_db?schema=public}
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/devtrack_ai}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
       JWT_SECRET: ${JWT_SECRET:-devtrack_ai_secret_jwt_key_9f13b92c_2026_academic_term}
@@ -100,6 +121,8 @@ services:
       postgres:
         condition: service_healthy
       mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       ollama:
         condition: service_started
@@ -113,7 +136,7 @@ services:
       - devtrack-network
 
   # ----------------------------------------------------------------------------
-  # 5. Frontend Production Web Server (React 18 + Vite served by Nginx)
+  # 6. Frontend Production Web Server (React 18 + Vite served by Nginx)
   # ----------------------------------------------------------------------------
   frontend:
     build:
@@ -144,6 +167,8 @@ volumes:
     name: devtrack_postgres_data
   mongo_data:
     name: devtrack_mongo_data
+  redis_data:
+    name: devtrack_redis_data
   ollama_models:
     name: devtrack_ollama_models
 

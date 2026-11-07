@@ -86,10 +86,33 @@ classDiagram
         +buildHtmlShell(options) String
     }
 
+    class RedisCache {
+        -client: RedisClient
+        -fallbackStore: Map
+        +isReady() Boolean
+        +get(key) Promise~any~
+        +set(key, value, ttlSeconds) Promise~Boolean~
+        +del(key) Promise~Boolean~
+        +delPattern(pattern) Promise~Number~
+        +flushUser(userId) Promise~Number~
+        +flushAll() Promise~Boolean~
+    }
+
+    class CacheService {
+        +cacheKeys: Object
+        +CACHE_TTL: Object
+        +invalidateProjectCaches(userId, projectId) Promise~void~
+        +invalidateTaskCaches(userId, taskId) Promise~void~
+        +flushUser(userId) Promise~Number~
+    }
+
     AuthController --> AuthService
     ProjectController --> ProjectService
+    ProjectController --> CacheService
     TaskController --> TaskService
+    TaskController --> CacheService
     PaymentController --> PaymentService
+    CacheService --> RedisCache
 ```
 
 ---
@@ -417,3 +440,131 @@ if (isAuthentic) {
 - Triggers `new window.Razorpay(options).open()`.
 - Captures Razorpay success payload and invokes `POST /api/payment/verify`.
 - Handles modal dismiss / cancellation events via `POST /api/payment/failure`.
+
+---
+
+## 8. Redis In-Memory Caching & Cache-Aside Implementation
+
+### 8.1 Redis Configuration & Resilient Fallback (`server/src/config/redis.js`)
+
+The Redis wrapper encapsulates connection life-cycle, serializes data with expiration, and provides an in-memory Map fallback:
+
+```javascript
+export const redisCache = {
+  isReady() {
+    return isConnected && redisClient?.isReady;
+  },
+
+  async get(key) {
+    if (this.isReady()) {
+      const data = await redisClient.get(key);
+      if (data !== null) {
+        cacheStats.hits++;
+        return JSON.parse(data);
+      }
+      cacheStats.misses++;
+      return null;
+    }
+    // Transparent in-memory fallback
+    const item = fallbackCache.get(key);
+    if (!item) { cacheStats.misses++; return null; }
+    if (Date.now() > item.expiresAt) { fallbackCache.delete(key); cacheStats.misses++; return null; }
+    cacheStats.hits++;
+    return item.value;
+  },
+
+  async set(key, value, ttlSeconds = 300) {
+    cacheStats.sets++;
+    if (this.isReady()) {
+      await redisClient.set(key, JSON.stringify(value), { EX: ttlSeconds });
+      return true;
+    }
+    fallbackCache.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+    return true;
+  },
+
+  async delPattern(pattern) {
+    if (this.isReady()) {
+      let count = 0;
+      for await (const key of redisClient.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+        await redisClient.del(key);
+        count++;
+      }
+      return count;
+    }
+    // Pattern deletion on fallback Map
+    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+    for (const key of fallbackCache.keys()) {
+      if (regex.test(key)) fallbackCache.delete(key);
+    }
+  }
+};
+```
+
+### 8.2 Cache Service & Key Generation (`server/src/services/cacheService.js`)
+
+Centralizes tenant-isolated key generation, TTL constants, and cascade invalidation triggers:
+
+```javascript
+export const CACHE_TTL = {
+  DASHBOARD_STATS: 300, // 5 minutes
+  PROJECTS_LIST: 300,   // 5 minutes
+  TASKS_LIST: 120,      // 2 minutes
+  ENTITY_DETAIL: 300,   // 5 minutes
+};
+
+export const cacheKeys = {
+  dashboardStats: (userId) => `devtrack:user:${userId}:dashboard:stats`,
+  projectsList: (userId) => `devtrack:user:${userId}:projects:list`,
+  projectDetails: (userId, projectId) => `devtrack:user:${userId}:projects:${projectId}`,
+  tasksList: (userId, query = {}) => {
+    const hash = Object.keys(query).length ? Buffer.from(JSON.stringify(query)).toString('base64url') : 'all';
+    return `devtrack:user:${userId}:tasks:list:${hash}`;
+  },
+  taskDetails: (userId, taskId) => `devtrack:user:${userId}:tasks:${taskId}`,
+};
+
+export const invalidateProjectCaches = async (userId, projectId = null) => {
+  await Promise.all([
+    redisCache.delPattern(`devtrack:user:${userId}:projects:*`),
+    redisCache.del(cacheKeys.dashboardStats(userId)),
+  ]);
+};
+
+export const invalidateTaskCaches = async (userId, taskId = null) => {
+  await Promise.all([
+    redisCache.delPattern(`devtrack:user:${userId}:tasks:*`),
+    redisCache.delPattern(`devtrack:user:${userId}:projects:*`), // Task status alters completion rate
+    redisCache.del(cacheKeys.dashboardStats(userId)),
+  ]);
+};
+```
+
+### 8.3 Cache-Aside Implementation in Controllers
+
+```javascript
+// Example: server/src/controllers/dashboardController.js (Read flow)
+export const getDashboardStats = async (req, res, next) => {
+  const cacheKey = cacheKeys.dashboardStats(req.user.id);
+  const cached = await redisCache.get(cacheKey);
+
+  if (cached) {
+    res.setHeader('X-Cache', 'HIT');
+    return sendSuccess(res, 200, 'Dashboard statistics retrieved from cache', cached);
+  }
+
+  const stats = await dashboardService.getStats(req.user.id);
+  await redisCache.set(cacheKey, stats, CACHE_TTL.DASHBOARD_STATS);
+  res.setHeader('X-Cache', 'MISS');
+  return sendSuccess(res, 200, 'Dashboard statistics retrieved successfully', stats);
+};
+
+// Example: server/src/controllers/taskController.js (Write invalidation flow)
+export const updateTask = async (req, res, next) => {
+  const updatedTask = await taskService.updateTask(req.user.id, req.params.id, req.body);
+  // Automated cascade invalidation on primary write
+  await invalidateTaskCaches(req.user.id, req.params.id);
+  return sendSuccess(res, 200, 'Task updated successfully', updatedTask);
+};
+```
+

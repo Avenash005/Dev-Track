@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { env, validateEnv } from './config/env.js';
 import { connectDatabases } from './config/database.js';
+import { initRedis, redisCache, cacheStats } from './config/redis.js';
 import { loggingMiddleware } from './middleware/loggingMiddleware.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
 import { apiResponse } from './utils/apiResponse.js';
@@ -82,8 +83,25 @@ app.get('/api/health', (req, res) => {
       aiUrl: env.OLLAMA_BASE_URL,
       ssrPages: ['/', '/explore', '/p/:id'],
       paymentGateway: 'Razorpay Test Mode',
+      redisCache: {
+        status: redisCache.isReady() ? 'connected' : 'offline (resilient cache-aside)',
+        stats: cacheStats,
+      },
     },
     'DevTrack AI API Server & SSR Engine is operational.'
+  );
+});
+
+// Cache telemetry route
+app.get('/api/cache/stats', (req, res) => {
+  return apiResponse.success(
+    res,
+    {
+      isRedisReady: redisCache.isReady(),
+      redisUrl: env.REDIS_URL,
+      stats: cacheStats,
+    },
+    'Cache telemetry retrieved.'
   );
 });
 
@@ -106,6 +124,7 @@ app.use(errorHandler);
 // 11. Start Server
 async function startServer() {
   await connectDatabases();
+  await initRedis();
 
   const server = app.listen(env.PORT, () => {
     console.log(`\n======================================================`);
