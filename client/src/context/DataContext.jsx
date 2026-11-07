@@ -1,115 +1,57 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { api } from '../services/api';
+import { useAuth } from './AuthContext';
 
 const DataContext = createContext(null);
 
-const INITIAL_PROJECTS = [
-  {
-    id: 'proj-1',
-    title: 'DevTrack AI Full-Stack Platform',
-    description: 'AI-powered productivity and learning management system with Node.js, PostgreSQL, MongoDB, and Ollama.',
-    status: 'IN_PROGRESS',
-    createdAt: '2026-11-01T10:00:00Z',
-    updatedAt: '2026-11-05T14:30:00Z',
-  },
-  {
-    id: 'proj-2',
-    title: 'Distributed System Microservices',
-    description: 'Event-driven architecture using Kafka, Redis caching, and Docker container orchestration.',
-    status: 'PLANNING',
-    createdAt: '2026-10-25T08:30:00Z',
-    updatedAt: '2026-11-02T11:20:00Z',
-  },
-  {
-    id: 'proj-3',
-    title: 'Algorithms & Data Structures Mastery',
-    description: 'Weekly solutions and space-time complexity analysis for LeetCode dynamic programming and graph problems.',
-    status: 'COMPLETED',
-    createdAt: '2026-10-10T09:15:00Z',
-    updatedAt: '2026-10-30T17:45:00Z',
-  },
-];
-
-const INITIAL_TASKS = [
-  {
-    id: 'task-1',
-    projectId: 'proj-1',
-    title: 'Implement Dark Theme Dashboard UI',
-    description: 'Construct responsive Tailwind CSS dashboard layout matching #09090B palette.',
-    status: 'COMPLETED',
-    priority: 'HIGH',
-    dueDate: '2026-11-07',
-    createdAt: '2026-11-01T11:00:00Z',
-  },
-  {
-    id: 'task-2',
-    projectId: 'proj-1',
-    title: 'Design PostgreSQL & MongoDB Hybrid Schemas',
-    description: 'Define relational entities in Prisma and document schemas in Mongoose for AI chat sessions.',
-    status: 'IN_PROGRESS',
-    priority: 'HIGH',
-    dueDate: '2026-11-09',
-    createdAt: '2026-11-02T14:00:00Z',
-  },
-  {
-    id: 'task-3',
-    projectId: 'proj-1',
-    title: 'Integrate Ollama Local AI LLM Proxy',
-    description: 'Build Express router proxying requests to local Ollama API at localhost:11434 with error fallback.',
-    status: 'PENDING',
-    priority: 'HIGH',
-    dueDate: '2026-11-12',
-    createdAt: '2026-11-03T09:00:00Z',
-  },
-  {
-    id: 'task-4',
-    projectId: 'proj-2',
-    title: 'Configure Docker Compose for PostgreSQL & Mongo',
-    description: 'Write docker-compose.yml file to spin up databases with health checks and volume persistence.',
-    status: 'PENDING',
-    priority: 'MEDIUM',
-    dueDate: '2026-11-15',
-    createdAt: '2026-11-04T16:20:00Z',
-  },
-  {
-    id: 'task-5',
-    projectId: 'proj-3',
-    title: 'Complete Graph Dijkstra & Bellman-Ford Visualizer',
-    description: 'Write comprehensive test suite and complexity notes for shortest-path graph traversals.',
-    status: 'COMPLETED',
-    priority: 'LOW',
-    dueDate: '2026-10-28',
-    createdAt: '2026-10-15T13:10:00Z',
-  },
-];
-
-const INITIAL_ACTIVITIES = [
-  {
-    id: 'act-1',
-    type: 'TASK_COMPLETED',
-    title: 'Completed task: Implement Dark Theme Dashboard UI',
-    timestamp: '25 minutes ago',
-    project: 'DevTrack AI Full-Stack Platform',
-  },
-  {
-    id: 'act-2',
-    type: 'PROJECT_CREATED',
-    title: 'Created project: Distributed System Microservices',
-    timestamp: '2 hours ago',
-    project: 'Distributed System Microservices',
-  },
-  {
-    id: 'act-3',
-    type: 'AI_QUERY',
-    title: 'Prompted AI Assistant on JavaScript Event Loop Microtasks',
-    timestamp: 'Yesterday',
-    project: 'DevTrack AI Full-Stack Platform',
-  },
-];
-
 export const DataProvider = ({ children }) => {
-  const [projects, setProjects] = useState(INITIAL_PROJECTS);
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
-  const [activities, setActivities] = useState(INITIAL_ACTIVITIES);
+  const { isAuthenticated, token } = useAuth();
+
+  const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Fetch all data from backend
+  const refreshData = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [projRes, taskRes, actRes] = await Promise.allSettled([
+        api.projects.getAll(),
+        api.tasks.getAll(),
+        api.dashboard.getActivity(),
+      ]);
+
+      if (projRes.status === 'fulfilled' && projRes.value?.data) {
+        setProjects(projRes.value.data);
+      }
+      if (taskRes.status === 'fulfilled' && taskRes.value?.data) {
+        setTasks(taskRes.value.data);
+      }
+      if (actRes.status === 'fulfilled' && actRes.value?.data) {
+        setActivities(actRes.value.data);
+      }
+    } catch (err) {
+      console.error('[DATA] Failed to load data from backend:', err.message);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshData();
+    } else {
+      setProjects([]);
+      setTasks([]);
+      setActivities([]);
+    }
+  }, [isAuthenticated, refreshData]);
 
   // Computed dashboard statistics
   const stats = useMemo(() => {
@@ -117,131 +59,118 @@ export const DataProvider = ({ children }) => {
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter((t) => t.status === 'COMPLETED').length;
     const pendingTasks = totalTasks - completedTasks;
-    const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     return {
       totalProjects,
       totalTasks,
       completedTasks,
       pendingTasks,
-      completionRate: Math.round(completionRate),
+      completionRate,
     };
   }, [projects, tasks]);
 
   // Project operations
-  const addProject = (projectData) => {
-    const newProject = {
-      ...projectData,
-      id: 'proj-' + Date.now(),
-      status: projectData.status || 'PLANNING',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setProjects((prev) => [newProject, ...prev]);
-    setActivities((prev) => [
-      {
-        id: 'act-' + Date.now(),
-        type: 'PROJECT_CREATED',
-        title: `Created project: ${newProject.title}`,
-        timestamp: 'Just now',
-        project: newProject.title,
-      },
-      ...prev,
-    ]);
-    return newProject;
+  const addProject = async (projectData) => {
+    try {
+      const res = await api.projects.create(projectData);
+      if (res?.data) {
+        setProjects((prev) => [res.data, ...prev]);
+        refreshData();
+        return res.data;
+      }
+    } catch (err) {
+      console.error('[DATA] addProject error:', err.message);
+      throw err;
+    }
   };
 
-  const updateProject = (id, updates) => {
-    setProjects((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p))
-    );
+  const updateProject = async (id, updates) => {
+    try {
+      const res = await api.projects.update(id, updates);
+      if (res?.data) {
+        setProjects((prev) => prev.map((p) => (p.id === id ? res.data : p)));
+        refreshData();
+        return res.data;
+      }
+    } catch (err) {
+      console.error('[DATA] updateProject error:', err.message);
+      throw err;
+    }
   };
 
-  const deleteProject = (id) => {
-    const project = projects.find((p) => p.id === id);
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-    setTasks((prev) => prev.filter((t) => t.projectId !== id));
-    if (project) {
-      setActivities((prev) => [
-        {
-          id: 'act-' + Date.now(),
-          type: 'PROJECT_DELETED',
-          title: `Deleted project: ${project.title}`,
-          timestamp: 'Just now',
-          project: project.title,
-        },
-        ...prev,
-      ]);
+  const deleteProject = async (id) => {
+    try {
+      await api.projects.delete(id);
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setTasks((prev) => prev.filter((t) => t.projectId !== id));
+      refreshData();
+    } catch (err) {
+      console.error('[DATA] deleteProject error:', err.message);
+      throw err;
     }
   };
 
   // Task operations
-  const addTask = (taskData) => {
-    const newTask = {
-      ...taskData,
-      id: 'task-' + Date.now(),
-      status: taskData.status || 'PENDING',
-      priority: taskData.priority || 'MEDIUM',
-      createdAt: new Date().toISOString(),
-    };
-    setTasks((prev) => [newTask, ...prev]);
-    const project = projects.find((p) => p.id === newTask.projectId);
-    setActivities((prev) => [
-      {
-        id: 'act-' + Date.now(),
-        type: 'TASK_CREATED',
-        title: `Created task: ${newTask.title}`,
-        timestamp: 'Just now',
-        project: project ? project.title : 'General',
-      },
-      ...prev,
-    ]);
-    return newTask;
-  };
-
-  const updateTask = (id, updates) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
-  };
-
-  const deleteTask = (id) => {
-    const task = tasks.find((t) => t.id === id);
-    setTasks((prev) => prev.filter((t) => t.id !== id));
-    if (task) {
-      setActivities((prev) => [
-        {
-          id: 'act-' + Date.now(),
-          type: 'TASK_DELETED',
-          title: `Deleted task: ${task.title}`,
-          timestamp: 'Just now',
-          project: 'Project Task',
-        },
-        ...prev,
-      ]);
+  const addTask = async (taskData) => {
+    try {
+      const res = await api.tasks.create(taskData);
+      if (res?.data) {
+        setTasks((prev) => [res.data, ...prev]);
+        refreshData();
+        return res.data;
+      }
+    } catch (err) {
+      console.error('[DATA] addTask error:', err.message);
+      throw err;
     }
   };
 
-  const toggleTaskStatus = (id) => {
+  const updateTask = async (id, updates) => {
+    try {
+      const res = await api.tasks.update(id, updates);
+      if (res?.data) {
+        setTasks((prev) => prev.map((t) => (t.id === id ? res.data : t)));
+        refreshData();
+        return res.data;
+      }
+    } catch (err) {
+      console.error('[DATA] updateTask error:', err.message);
+      throw err;
+    }
+  };
+
+  const deleteTask = async (id) => {
+    try {
+      await api.tasks.delete(id);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      refreshData();
+    } catch (err) {
+      console.error('[DATA] deleteTask error:', err.message);
+      throw err;
+    }
+  };
+
+  const toggleTaskStatus = async (id) => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    const nextStatus = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
+
+    // Optimistic UI update
     setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === id) {
-          const nextStatus = t.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
-          if (nextStatus === 'COMPLETED') {
-            setActivities((acts) => [
-              {
-                id: 'act-' + Date.now(),
-                type: 'TASK_COMPLETED',
-                title: `Completed task: ${t.title}`,
-                timestamp: 'Just now',
-                project: 'DevTrack',
-              },
-              ...acts,
-            ]);
-          }
-          return { ...t, status: nextStatus };
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === id ? { ...t, status: nextStatus } : t))
     );
+
+    try {
+      await api.tasks.update(id, { status: nextStatus });
+      refreshData();
+    } catch (err) {
+      // Revert if API fails
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, status: task.status } : t))
+      );
+      console.error('[DATA] toggleTaskStatus error:', err.message);
+    }
   };
 
   return (
@@ -251,6 +180,9 @@ export const DataProvider = ({ children }) => {
         tasks,
         activities,
         stats,
+        loading,
+        error,
+        refreshData,
         addProject,
         updateProject,
         deleteProject,
@@ -272,4 +204,3 @@ export const useData = () => {
   }
   return context;
 };
-

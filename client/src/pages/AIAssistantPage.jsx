@@ -5,83 +5,62 @@ import {
   Plus,
   Trash2,
   Sparkles,
-  Terminal,
-  AlertCircle,
   User,
-  RefreshCw,
   Cpu,
+  AlertCircle,
 } from 'lucide-react';
+import { api } from '../services/api';
 import Badge from '../components/common/Badge';
 
-const DEFAULT_CONVERSATIONS = [
-  {
-    id: 'conv-1',
-    title: 'Event Loop & Microtasks Explanation',
-    createdAt: '2026-11-06T14:20:00Z',
-    messages: [
-      {
-        id: 'msg-1',
-        role: 'user',
-        content: 'Can you explain why Promise microtasks execute before setTimeout macrotasks in the Node.js event loop?',
-        timestamp: '2:20 PM',
-      },
-      {
-        id: 'msg-2',
-        role: 'assistant',
-        content: `In JavaScript runtimes (V8 / Node.js), the event loop processes asynchronous tasks through specific queues with strict priorities:\n\n1. **Call Stack**: Executes synchronous JavaScript code until it drains.\n2. **Microtask Queue** (Promises, \`queueMicrotask\`, \`process.nextTick\`): Evaluated immediately after the currently running script finishes, *before* yielding to any macrotask.\n3. **Macrotask / Timer Queue** (\`setTimeout\`, \`setInterval\`, I/O): Executes only after the microtask queue is completely empty.\n\nTherefore, even with \`setTimeout(fn, 0)\`, the callback is placed in the timers phase of the event loop, whereas a resolved Promise microtask executes right after the current execution context concludes!`,
-        timestamp: '2:21 PM',
-      },
-    ],
-  },
-  {
-    id: 'conv-2',
-    title: 'Prisma vs Mongoose in DevTrack AI',
-    createdAt: '2026-11-05T09:10:00Z',
-    messages: [
-      {
-        id: 'msg-3',
-        role: 'user',
-        content: 'Why is DevTrack AI using both PostgreSQL with Prisma and MongoDB with Mongoose?',
-        timestamp: '9:10 AM',
-      },
-      {
-        id: 'msg-4',
-        role: 'assistant',
-        content: `DevTrack AI leverages a **Polyglot Persistence Architecture**:\n\n- **PostgreSQL + Prisma ORM**: Best for strictly structured relational models (Users, Projects, Tasks) where ACID transactions, foreign keys, and relational integrity are paramount.\n- **MongoDB + Mongoose ODM**: Best for polymorphic, flexible document models like AI chat histories, message sequences, and dynamic session logs that vary in shape and length.`,
-        timestamp: '9:11 AM',
-      },
-    ],
-  },
-];
-
 export default function AIAssistantPage() {
-  const [conversations, setConversations] = useState(() => {
-    const saved = localStorage.getItem('devtrack_ai_convs');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return DEFAULT_CONVERSATIONS;
-      }
-    }
-    return DEFAULT_CONVERSATIONS;
-  });
-
-  const [activeConvId, setActiveConvId] = useState(() => {
-    return conversations[0]?.id || 'conv-1';
-  });
-
+  const [conversations, setConversations] = useState([]);
+  const [activeConvId, setActiveConvId] = useState(null);
+  const [activeConversation, setActiveConversation] = useState(null);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [aiStatus, setAiStatus] = useState('READY'); // 'READY' | 'OFFLINE' | 'BUSY'
+  const [loadingConvs, setLoadingConvs] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const messagesEndRef = useRef(null);
 
-  // Sync conversations to localStorage
-  useEffect(() => {
-    localStorage.setItem('devtrack_ai_convs', JSON.stringify(conversations));
-  }, [conversations]);
+  // Load user conversations on mount
+  const loadConversations = async () => {
+    try {
+      const res = await api.ai.getConversations();
+      if (res?.data) {
+        setConversations(res.data);
+        if (res.data.length > 0 && !activeConvId) {
+          setActiveConvId(res.data[0].id);
+        }
+      }
+    } catch (err) {
+      console.warn('[AI] Could not load past threads:', err.message);
+    } finally {
+      setLoadingConvs(false);
+    }
+  };
 
-  const activeConversation = conversations.find((c) => c.id === activeConvId) || conversations[0];
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  // Load specific conversation details when activeConvId changes
+  useEffect(() => {
+    async function loadThread() {
+      if (!activeConvId) {
+        setActiveConversation(null);
+        return;
+      }
+      try {
+        const res = await api.ai.getConversationById(activeConvId);
+        if (res?.data) {
+          setActiveConversation(res.data);
+        }
+      } catch (err) {
+        console.warn('[AI] Could not load thread details:', err.message);
+      }
+    }
+    loadThread();
+  }, [activeConvId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,29 +71,36 @@ export default function AIAssistantPage() {
   }, [activeConversation?.messages, isLoading]);
 
   const handleNewConversation = () => {
-    const newConv = {
-      id: 'conv-' + Date.now(),
+    setActiveConvId(null);
+    setActiveConversation({
+      id: null,
       title: 'New Conversation',
-      createdAt: new Date().toISOString(),
       messages: [
         {
-          id: 'welcome-' + Date.now(),
+          id: 'welcome',
           role: 'assistant',
-          content: 'Hello! I am your DevTrack AI engineering mentor. Ask me about software design patterns, debugging JavaScript runtime mechanics, or configuring PostgreSQL and Ollama.',
+          content: 'Hello! I am your DevTrack AI engineering mentor. Ask me about system architecture, JavaScript runtime mechanics, or setting up PostgreSQL and Ollama.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ],
-    };
-    setConversations([newConv, ...conversations]);
-    setActiveConvId(newConv.id);
+    });
   };
 
-  const handleDeleteConversation = (id, e) => {
+  const handleDeleteConversation = async (id, e) => {
     e.stopPropagation();
-    const updated = conversations.filter((c) => c.id !== id);
-    setConversations(updated);
-    if (activeConvId === id && updated.length > 0) {
-      setActiveConvId(updated[0].id);
+    try {
+      await api.ai.deleteConversation(id);
+      const updated = conversations.filter((c) => c.id !== id);
+      setConversations(updated);
+      if (activeConvId === id) {
+        if (updated.length > 0) {
+          setActiveConvId(updated[0].id);
+        } else {
+          handleNewConversation();
+        }
+      }
+    } catch (err) {
+      console.error('[AI] Delete failed:', err.message);
     }
   };
 
@@ -124,48 +110,61 @@ export default function AIAssistantPage() {
 
     const userText = inputMessage.trim();
     setInputMessage('');
+    setErrorMessage('');
 
-    const userMessage = {
-      id: 'msg-' + Date.now(),
+    const localUserMsg = {
+      id: 'temp-' + Date.now(),
       role: 'user',
       content: userText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Append user message immediately
-    const updatedMessages = [...(activeConversation?.messages || []), userMessage];
-    const updatedTitle =
-      activeConversation?.title === 'New Conversation'
-        ? userText.slice(0, 32) + (userText.length > 32 ? '...' : '')
-        : activeConversation?.title;
-
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeConvId ? { ...c, title: updatedTitle, messages: updatedMessages } : c
-      )
-    );
+    // Optimistically show user message
+    setActiveConversation((prev) => ({
+      ...prev,
+      messages: [...(prev?.messages || []), localUserMsg],
+    }));
 
     setIsLoading(true);
 
     try {
-      // In Phase 1 frontend preview, we simulate local Ollama inference response
-      // In Phase 4, this calls POST /api/ai/chat through the Express backend proxy!
-      await new Promise((res) => setTimeout(res, 900));
+      const res = await api.ai.chat({
+        conversationId: activeConvId || undefined,
+        message: userText,
+      });
 
-      const aiReply = {
-        id: 'ai-' + Date.now(),
-        role: 'assistant',
-        content: `[Ollama Model: llama3.2]\n\nRegarding: "${userText}"\n\nIn modern web engineering, breaking down this task requires understanding the execution context and data contracts. Ensure your backend validates inputs before committing transactions to PostgreSQL, and persist the conversation payload to MongoDB for asynchronous retrieval.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
+      if (res?.data) {
+        const { conversationId, assistantMessage } = res.data;
+        if (!activeConvId) {
+          setActiveConvId(conversationId);
+          loadConversations();
+        }
 
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === activeConvId ? { ...c, messages: [...c.messages, aiReply] } : c
-        )
-      );
+        setActiveConversation((prev) => ({
+          ...prev,
+          id: conversationId,
+          messages: [
+            ...(prev?.messages || []).filter((m) => m.id !== localUserMsg.id),
+            localUserMsg,
+            assistantMessage,
+          ],
+        }));
+      }
     } catch (err) {
-      setAiStatus('OFFLINE');
+      setErrorMessage(err.message || 'AI request failed.');
+      // Append diagnostic message
+      setActiveConversation((prev) => ({
+        ...prev,
+        messages: [
+          ...(prev?.messages || []),
+          {
+            id: 'err-' + Date.now(),
+            role: 'assistant',
+            content: `[Ollama Proxy Notice]: ${err.message}. If Ollama is not yet started, launch it locally with: 'ollama serve' and pull the model with: 'ollama pull llama3.2'.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ],
+      }));
     } finally {
       setIsLoading(false);
     }
@@ -187,35 +186,39 @@ export default function AIAssistantPage() {
 
         {/* Conversation list */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {conversations.map((conv) => {
-            const isActive = conv.id === activeConvId;
-            return (
-              <div
-                key={conv.id}
-                onClick={() => setActiveConvId(conv.id)}
-                className={`group flex items-center justify-between rounded-lg px-3 py-2.5 text-xs cursor-pointer transition ${
-                  isActive
-                    ? 'bg-zinc-800 text-text-primary border border-zinc-700'
-                    : 'text-text-secondary hover:bg-zinc-900 hover:text-text-primary'
-                }`}
-              >
-                <div className="truncate mr-2">
-                  <p className="truncate font-medium">{conv.title}</p>
-                  <p className="text-[10px] text-text-muted mt-0.5">
-                    {conv.messages.length} messages
-                  </p>
-                </div>
-                {conversations.length > 1 && (
+          {conversations.length === 0 ? (
+            <div className="p-4 text-center text-xs text-text-muted">
+              No previous conversations. Start a new chat!
+            </div>
+          ) : (
+            conversations.map((conv) => {
+              const isActive = conv.id === activeConvId;
+              return (
+                <div
+                  key={conv.id}
+                  onClick={() => setActiveConvId(conv.id)}
+                  className={`group flex items-center justify-between rounded-lg px-3 py-2.5 text-xs cursor-pointer transition ${
+                    isActive
+                      ? 'bg-zinc-800 text-text-primary border border-zinc-700'
+                      : 'text-text-secondary hover:bg-zinc-900 hover:text-text-primary'
+                  }`}
+                >
+                  <div className="truncate mr-2">
+                    <p className="truncate font-medium">{conv.title}</p>
+                    <p className="text-[10px] text-text-muted mt-0.5">
+                      {new Date(conv.updatedAt || conv.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
                   <button
                     onClick={(e) => handleDeleteConversation(conv.id, e)}
                     className="opacity-0 group-hover:opacity-100 p-1 text-text-muted hover:text-rose-400 transition"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
-                )}
-              </div>
-            );
-          })}
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Ollama local status */}
@@ -223,14 +226,14 @@ export default function AIAssistantPage() {
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary">
               <Cpu className="h-3.5 w-3.5 text-primary" />
-              Ollama Engine
+              Ollama Core
             </span>
             <Badge variant="success" size="sm" dot>
               llama3.2
             </Badge>
           </div>
           <p className="mt-1 text-[10px] text-text-muted">
-            http://localhost:11434 via Express proxy
+            Proxied via Express backend: POST /api/ai/chat
           </p>
         </div>
       </div>
@@ -245,26 +248,28 @@ export default function AIAssistantPage() {
             </div>
             <div>
               <h3 className="text-xs font-semibold text-text-primary">
-                {activeConversation?.title || 'AI Mentor'}
+                {activeConversation?.title || 'New Conversation'}
               </h3>
-              <p className="text-[10px] text-text-muted">Local inference mode enabled</p>
+              <p className="text-[10px] text-text-muted">
+                Frontend → Express API → Ollama (localhost:11434)
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <Badge variant="neutral" size="sm">
-              REST: /api/ai/chat
+              Model: llama3.2
             </Badge>
           </div>
         </div>
 
         {/* Message scroll list */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-          {activeConversation?.messages.map((msg) => {
+          {(activeConversation?.messages || []).map((msg, index) => {
             const isUser = msg.role === 'user';
             return (
               <div
-                key={msg.id}
+                key={msg.id || index}
                 className={`flex gap-3 max-w-3xl ${isUser ? 'ml-auto flex-row-reverse' : ''}`}
               >
                 <div
@@ -290,7 +295,7 @@ export default function AIAssistantPage() {
                       isUser ? 'text-white/70 text-right' : 'text-text-muted'
                     }`}
                   >
-                    {msg.timestamp}
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                   </div>
                 </div>
               </div>
@@ -306,7 +311,7 @@ export default function AIAssistantPage() {
                 <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" />
                 <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.2s]" />
                 <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0.4s]" />
-                <span className="ml-2">Ollama is generating response...</span>
+                <span className="ml-2">Ollama is synthesizing response...</span>
               </div>
             </div>
           )}
@@ -333,11 +338,10 @@ export default function AIAssistantPage() {
             </button>
           </form>
           <p className="mt-2 text-center text-[10px] text-text-muted">
-            DevTrack AI passes all inference requests through Express to your local Ollama daemon.
+            All prompts are proxied securely through the Express API layer to your local Ollama engine.
           </p>
         </div>
       </div>
     </div>
   );
 }
-

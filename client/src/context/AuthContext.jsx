@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { api } from '../services/api';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
+  const [token, setToken] = useState(() => localStorage.getItem('devtrack_token') || '');
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('devtrack_user');
     if (saved) {
@@ -12,68 +14,86 @@ export const AuthProvider = ({ children }) => {
         return null;
       }
     }
-    // Default demo user for Phase 1 exploration
-    return {
-      id: 'usr-1',
-      name: 'Alex Chen',
-      email: 'alex.chen@devtrack.ai',
-      role: 'Full-Stack Developer Student',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-    };
+    return null;
   });
+  const [loading, setLoading] = useState(true);
 
-  const [token, setToken] = useState(() => localStorage.getItem('devtrack_token') || 'demo-jwt-token');
-
+  // Validate session on mount
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('devtrack_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('devtrack_user');
+    async function loadUser() {
+      if (token) {
+        try {
+          const res = await api.auth.getMe();
+          if (res?.data) {
+            setUser(res.data);
+            localStorage.setItem('devtrack_user', JSON.stringify(res.data));
+          }
+        } catch (err) {
+          console.warn('[AUTH] Session token expired or invalid:', err.message);
+          // If 401, clear expired token
+          if (err.status === 401) {
+            logout();
+          }
+        }
+      }
+      setLoading(false);
     }
-  }, [user]);
-
-  useEffect(() => {
-    if (token) {
-      localStorage.setItem('devtrack_token', token);
-    } else {
-      localStorage.removeItem('devtrack_token');
-    }
+    loadUser();
   }, [token]);
 
   const login = async (email, password) => {
-    // Phase 1 demo login - will connect to /api/auth/login in Phase 2
-    const mockUser = {
-      id: 'usr-1',
-      name: email.split('@')[0] || 'Dev User',
-      email,
-      role: 'Software Engineer',
-    };
-    setUser(mockUser);
-    setToken('sample-jwt-token-' + Date.now());
-    return { success: true, user: mockUser };
+    try {
+      const res = await api.auth.login({ email, password });
+      if (res?.data) {
+        const { user: authedUser, token: authToken } = res.data;
+        setUser(authedUser);
+        setToken(authToken);
+        localStorage.setItem('devtrack_user', JSON.stringify(authedUser));
+        localStorage.setItem('devtrack_token', authToken);
+        return { success: true, user: authedUser };
+      }
+      return { success: false, message: 'Invalid response from server.' };
+    } catch (err) {
+      return { success: false, message: err.message || 'Login failed.' };
+    }
   };
 
   const register = async (name, email, password) => {
-    const newUser = {
-      id: 'usr-' + Date.now(),
-      name,
-      email,
-      role: 'Student Developer',
-    };
-    setUser(newUser);
-    setToken('sample-jwt-token-' + Date.now());
-    return { success: true, user: newUser };
+    try {
+      const res = await api.auth.register({ name, email, password });
+      if (res?.data) {
+        const { user: authedUser, token: authToken } = res.data;
+        setUser(authedUser);
+        setToken(authToken);
+        localStorage.setItem('devtrack_user', JSON.stringify(authedUser));
+        localStorage.setItem('devtrack_token', authToken);
+        return { success: true, user: authedUser };
+      }
+      return { success: false, message: 'Invalid response from server.' };
+    } catch (err) {
+      return { success: false, message: err.message || 'Registration failed.' };
+    }
   };
 
   const logout = () => {
     setUser(null);
-    setToken(null);
+    setToken('');
     localStorage.removeItem('devtrack_user');
     localStorage.removeItem('devtrack_token');
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        login,
+        register,
+        logout,
+        isAuthenticated: !!token,
+        loading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -86,4 +106,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
