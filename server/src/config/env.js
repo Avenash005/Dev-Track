@@ -35,5 +35,8 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
   OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
   OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'llama3.2',
-};
 
+  // Razorpay Payment Gateway (Test Mode)
+  RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || 'rzp_test_DevTrackKey2026',
+  RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || 'devtrack_razorpay_secret_test_2026',
+};

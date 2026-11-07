@@ -10,20 +10,24 @@ import {
   Sparkles,
   LogOut,
   Terminal,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const NAV_ITEMS = [
-  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Projects', path: '/projects', icon: FolderKanban },
-  { name: 'Tasks', path: '/tasks', icon: CheckSquare },
-  { name: 'AI Assistant', path: '/ai', icon: Bot, badge: 'Ollama' },
-  { name: 'Learn Concepts', path: '/learn', icon: GraduationCap, badge: 'JS' },
-  { name: 'Settings', path: '/settings', icon: Settings },
-];
-
 export default function Sidebar({ mobileOpen, setMobileOpen }) {
-  const { user, logout } = useAuth();
+  const { user, logout, subscription } = useAuth();
+
+  const planBadge = subscription?.plan ? subscription.plan.toUpperCase() : 'FREE';
+
+  const navItems = [
+    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Projects', path: '/projects', icon: FolderKanban },
+    { name: 'Tasks', path: '/tasks', icon: CheckSquare },
+    { name: 'AI Assistant', path: '/ai', icon: Bot, badge: 'Ollama' },
+    { name: 'Learn Concepts', path: '/learn', icon: GraduationCap, badge: 'JS' },
+    { name: 'Pricing & Plans', path: '/pricing', icon: CreditCard, badge: planBadge },
+    { name: 'Settings', path: '/settings', icon: Settings },
+  ];
 
   return (
     <>
@@ -62,7 +66,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
             Core Modules
           </p>
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink

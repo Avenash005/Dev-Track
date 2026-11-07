@@ -48,3 +48,6 @@ jobs:
           JWT_SECRET: test_ci_super_secret_jwt_key_2026
           OLLAMA_BASE_URL: http://localhost:11434
           OLLAMA_MODEL: llama3.2
+          RAZORPAY_KEY_ID: rzp_test_DevTrackKey2026
+          RAZORPAY_KEY_SECRET: devtrack_razorpay_secret_test_2026
+

@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { env, validateEnv } from './config/env.js';
 import { connectDatabases } from './config/database.js';
 import { loggingMiddleware } from './middleware/loggingMiddleware.js';
@@ -12,6 +14,13 @@ import projectRoutes from './routes/projectRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+
+// SSR Renderer imports
+import { ssrRenderer } from './ssr/renderer.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // 1. Startup environment validation
 validateEnv();
@@ -48,7 +57,15 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // 4. Request logging middleware
 app.use(loggingMiddleware);
 
-// 5. System Health Check Endpoint
+// 5. Serve static files for SSR client hydration scripts
+app.use(express.static(path.resolve(__dirname, '../public')));
+
+// 6. Server-Side Rendered (SSR) Public Pages
+app.get('/', ssrRenderer.renderLanding);
+app.get('/explore', ssrRenderer.renderExplore);
+app.get('/p/:id', ssrRenderer.renderProject);
+
+// 7. System Health Check Endpoint
 app.get('/api/health', (req, res) => {
   return apiResponse.success(
     res,
@@ -59,27 +76,30 @@ app.get('/api/health', (req, res) => {
       nodeVersion: process.version,
       aiModel: env.OLLAMA_MODEL,
       aiUrl: env.OLLAMA_BASE_URL,
+      ssrPages: ['/', '/explore', '/p/:id'],
+      paymentGateway: 'Razorpay Test Mode',
     },
-    'DevTrack AI API Server is operational.'
+    'DevTrack AI API Server & SSR Engine is operational.'
   );
 });
 
-// 6. Mount REST API Resource Routers
+// 8. Mount REST API Resource Routers
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/payment', paymentRoutes);
 
-// 7. Unknown Route 404 Handler
+// 9. Unknown Route 404 Handler
 app.use((req, res) => {
   return apiResponse.notFound(res, `Cannot ${req.method} ${req.originalUrl} - Endpoint does not exist.`);
 });
 
-// 8. Centralized Error Handling Middleware
+// 10. Centralized Error Handling Middleware
 app.use(errorHandler);
 
-// 9. Start Server
+// 11. Start Server
 async function startServer() {
   await connectDatabases();
 
@@ -87,8 +107,10 @@ async function startServer() {
     console.log(`\n======================================================`);
     console.log(`  DevTrack AI Express Server running on port ${env.PORT}`);
     console.log(`  Environment: ${env.NODE_ENV}`);
-    console.log(`  Health Check: http://localhost:${env.PORT}/api/health`);
-    console.log(`  Frontend:    ${env.FRONTEND_URL}`);
+    console.log(`  SSR Public Landing Page: http://localhost:${env.PORT}/`);
+    console.log(`  SSR Public Projects:     http://localhost:${env.PORT}/explore`);
+    console.log(`  Health Check:            http://localhost:${env.PORT}/api/health`);
+    console.log(`  Frontend SPA URL:        ${env.FRONTEND_URL}`);
     console.log(`======================================================\n`);
   });
 
@@ -102,4 +124,3 @@ startServer().catch((err) => {
 });
 
 export default app;
-

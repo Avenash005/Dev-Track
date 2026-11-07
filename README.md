@@ -7,6 +7,8 @@
 [![Node.js](https://img.shields.io/badge/Backend-Node.js_%2B_Express-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![PostgreSQL](https://img.shields.io/badge/Relational_DB-PostgreSQL_%2B_Prisma-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![MongoDB](https://img.shields.io/badge/Document_DB-MongoDB_%2B_Mongoose-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com)
+[![SSR](https://img.shields.io/badge/SSR-React_DOM_Server-000000?logo=react&logoColor=61DAFB)](https://react.dev)
+[![Razorpay](https://img.shields.io/badge/Payments-Razorpay_Test_Mode-02042B?logo=razorpay&logoColor=3395FF)](https://razorpay.com)
 [![Ollama](https://img.shields.io/badge/Local_AI-Ollama_(llama3.2)-FF6F00?logo=ollama&logoColor=white)](https://ollama.com)
 [![Tailwind CSS](https://img.shields.io/badge/Styling-Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
 
@@ -18,6 +20,8 @@ DevTrack AI empowers students to:
 - **Manage Projects & Tasks**: Organize software development milestones, track priorities, set deadlines, and monitor real-time completion velocity.
 - **Consult Local AI Mentors**: Chat with an offline, locally hosted LLM via Ollama (`llama3.2`) proxied securely through the Express backend, with conversations persisted in MongoDB.
 - **Master Core JavaScript Mechanics**: Explore interactive sandboxes with live execution outputs and quizzes for **Closures**, the **Event Loop**, **Hoisting & TDZ**, and **Promises vs Callbacks**.
+- **Server-Side Rendered (SSR) Public Pages**: Ultra-fast initial page loads with pre-rendered HTML for public showcase pages (`/`, `/explore`, `/p/:id`), complete with server data pre-fetching and client hydration.
+- **Razorpay Subscription Gateway**: End-to-end payment processing in Test Mode with cryptographic HMAC-SHA256 signature verification for **Free** (₹0), **Pro** (₹149/mo), and **Premium** (₹299/mo) tiers.
 - **Inspect System Architecture**: View database connection telemetry and system metrics in a dark-themed SaaS dashboard (`#09090B` palette).
 
 ---
@@ -60,26 +64,32 @@ DevTrack-AI/
 │       │   ├── projects/       # ProjectForm
 │       │   └── tasks/          # TaskForm
 │       ├── context/            # AuthContext, DataContext
-│       ├── pages/              # Dashboard, Projects, Tasks, AI, Learn, Settings, Login, Register
-│       ├── services/           # api.js (Fetch client)
+│       ├── pages/              # Dashboard, Projects, Tasks, AI, Learn, Pricing, Settings, Login, Register
+│       ├── services/           # api.js (Fetch client with Payment APIs)
 │       ├── App.jsx             # React Router Route Tree
 │       ├── main.jsx            # Entry Point
 │       └── index.css           # Tailwind base styles
 │
-├── server/                     # Node.js / Express Backend
+├── server/                     # Node.js / Express Backend + SSR Engine
 │   ├── data/                   # Embedded persistent store (local fallback)
 │   ├── prisma/
-│   │   └── schema.prisma       # PostgreSQL schema with Prisma
+│   │   └── schema.prisma       # PostgreSQL schema (User, Project, Task, Subscription, Payment)
+│   ├── public/                 # Static assets & client hydration scripts
+│   │   └── ssr/                # hydrate-landing.js, hydrate-project.js
 │   ├── src/
 │   │   ├── config/             # env.js, database.js
-│   │   ├── controllers/        # auth, project, task, dashboard, ai controllers
+│   │   ├── controllers/        # auth, project, task, dashboard, ai, payment controllers
+│   │   ├── generated/          # Prisma client output
 │   │   ├── middleware/         # auth, validation, logging, error middlewares
 │   │   ├── models/             # Conversation.js (Mongoose MongoDB)
-│   │   ├── routes/             # REST resource routes
-│   │   ├── services/           # Business logic & Ollama proxy
+│   │   ├── routes/             # REST resource routes & paymentRoutes.js
+│   │   ├── services/           # auth, project, task, dashboard, ai, paymentService.js
+│   │   ├── ssr/                # SSR engine & pre-rendered React components
+│   │   │   ├── components/     # LandingPage.js, ExplorePage.js, PublicProjectPage.js
+│   │   │   └── renderer.js     # ReactDOMServer renderToString & HTML shell injection
 │   │   ├── utils/              # apiResponse.js (HTTP status code helpers)
-│   │   └── server.js           # Express application entry
-│   ├── test-api.js             # Automated 28-assertion test suite
+│   │   └── server.js           # Express app, SSR route handlers, payment router
+│   ├── test-api.js             # Automated 52-assertion test suite (Auth, CRUD, AI, SSR, Payments)
 │   ├── .env.example
 │   └── package.json
 │
@@ -138,6 +148,8 @@ MONGODB_URI=mongodb://localhost:27017/devtrack_ai
 JWT_SECRET=super_secure_devtrack_jwt_secret_key_change_in_production_2026
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
+RAZORPAY_KEY_ID=rzp_test_DevTrackKey2026
+RAZORPAY_KEY_SECRET=devtrack_razorpay_secret_test_2026
 ```
 
 ---
@@ -198,7 +210,7 @@ Open `http://localhost:5173` in your browser.
 
 ## 5. Running Automated API Tests
 
-DevTrack AI includes a comprehensive 28-assertion test suite that validates health checks, registration, JWT authentication, duplicate email conflicts (409), unauthorized rejections (401), project CRUD, task foreign-key cascades, dashboard analytics, and AI chat:
+DevTrack AI includes a comprehensive 52-assertion automated test suite that validates health checks, registration, JWT authentication, duplicate email conflicts (409), unauthorized rejections (401), project CRUD, task foreign-key cascades, dashboard analytics, AI chat, Server-Side Rendered (SSR) public HTML delivery, and Razorpay payment order creation, HMAC signature verification, tampering defense, and subscription updates:
 
 ```bash
 cd server
@@ -223,11 +235,11 @@ node test-api.js
   ✔ PASS : GET /api/auth/me with Bearer token returned 200 OK
   ✔ PASS : Profile name matches registered user
   ✔ PASS : POST /api/projects returned 201 Created
-  ✔ PASS : Project created with ID
+  ✔ PASS : Project created with ID: proj-...
   ✔ PASS : GET /api/projects returned 200 OK
   ✔ PASS : Projects list contains created project
   ✔ PASS : POST /api/tasks returned 201 Created
-  ✔ PASS : Task created with ID
+  ✔ PASS : Task created with ID: task-...
   ✔ PASS : PUT /api/tasks/:id returned 200 OK
   ✔ PASS : Task status transitioned to COMPLETED
   ✔ PASS : GET /api/dashboard/stats returned 200 OK
@@ -240,14 +252,137 @@ node test-api.js
   ✔ PASS : DELETE /api/tasks/:id returned 204 No Content
   ✔ PASS : DELETE /api/projects/:id returned 204 No Content
 
+--- Verifying Server-Side Rendering (SSR) ---
+  ✔ PASS : SSR GET / returned 200 OK
+  ✔ PASS : SSR GET / returned text/html content-type
+  ✔ PASS : SSR HTML contains <!DOCTYPE html> preamble
+  ✔ PASS : SSR pre-rendered HTML contains brand title 'DevTrack AI'
+  ✔ PASS : SSR HTML contains server injected window.__INITIAL_DATA__
+  ✔ PASS : SSR HTML references browser hydration bundle
+  ✔ PASS : SSR GET /explore returned 200 OK
+  ✔ PASS : SSR explore page pre-renders public catalog
+  ✔ PASS : SSR GET /p/proj-1 returned 200 OK
+  ✔ PASS : SSR project page pre-renders project showcase
+
+--- Verifying Razorpay Payment Gateway ---
+  ✔ PASS : GET /api/payment/plans returned 200 OK
+  ✔ PASS : Returned exactly 3 subscription tiers (Free, Pro, Premium)
+  ✔ PASS : Pro plan priced correctly at ₹149/mo
+  ✔ PASS : POST /api/payment/create-order without auth rejected with 401 Unauthorized
+  ✔ PASS : POST /api/payment/create-order returned 201 Created
+  ✔ PASS : Received Razorpay order ID: order_test_...
+  ✔ PASS : Order amount in paise equals 14900 (₹149.00)
+  ✔ PASS : Tampered payment signature correctly rejected with 400 Bad Request
+  ✔ PASS : Valid HMAC-SHA256 signature verified with 200 OK
+  ✔ PASS : User subscription tier successfully updated to PRO
+  ✔ PASS : Subscription status is ACTIVE
+  ✔ PASS : GET /api/payment/subscription returned 200 OK
+  ✔ PASS : Active subscription reflects PRO plan
+  ✔ PASS : POST /api/payment/failure successfully logged failure record
+
 ======================================================
-  Test Results: 28 Passed, 0 Failed
+  Test Results: 52 Passed, 0 Failed
 ======================================================
 ```
 
 ---
 
-## 6. Comprehensive Documentation Links
+## 6. Server-Side Rendering (SSR) Architecture
+
+DevTrack AI implements a hybrid rendering architecture:
+- **Client-Side Rendering (CSR)**: Used for authenticated, dynamic dashboard tools (`/dashboard`, `/projects`, `/tasks`, `/ai`, `/learn`, `/pricing`, `/settings`) via React 18 and Vite for smooth SPA state transitions.
+- **Server-Side Rendering (SSR)**: Used for public, indexable landing and showcase pages (`/`, `/explore`, `/p/:id`) pre-rendered directly on the Node.js Express server using `react-dom/server` (`renderToString`).
+
+### SSR Request Lifecycle
+```
+[User Browser]
+       │
+       ▼  1. GET / or GET /explore
+[Express Server]
+       │
+       ├─► 2. Pre-fetch Data from Database (PostgreSQL / localDb store)
+       ├─► 3. React Component Tree rendered via ReactDOMServer.renderToString(element)
+       ├─► 4. Generate Complete HTML Shell + inject window.__INITIAL_DATA__
+       │
+       ▼  5. Complete Pre-rendered HTML Streamed to Browser (Instant FCP)
+[Browser DOM Rendered]
+       │
+       ▼  6. Browser loads /ssr/hydrate-landing.js
+[ReactDOM.hydrateRoot(root, Component)]
+       │
+       ▼  7. Event listeners attached (Interactive Hydration Complete)
+[Interactive Web Page]
+```
+
+### SSR vs CSR Technical Comparison
+| Architectural Dimension | Server-Side Rendering (SSR) | Client-Side Rendering (CSR) |
+|---|---|---|
+| **Primary Target Pages** | Public Landing (`/`), Explore (`/explore`), Project Details (`/p/:id`) | Authenticated App (`/dashboard`, `/projects`, `/tasks`, `/ai`, `/pricing`) |
+| **Initial HTML Response** | Fully formed HTML containing actual titles, stats, and text | Minimal `<div id="root"></div>` shell |
+| **First Contentful Paint (FCP)** | Instant (~5-15ms) on initial request | Delayed until JS bundle downloads and executes (~200-500ms) |
+| **SEO & Social Crawlers** | 100% crawlable without JavaScript execution | Requires crawler JS evaluation |
+| **Data Fetching Timing** | Pre-fetched on server before response dispatch | Fetched asynchronously in `useEffect` on client |
+| **Hydration Mechanics** | `ReactDOM.hydrateRoot()` binds listeners to pre-existing DOM nodes | `ReactDOM.createRoot().render()` creates DOM from scratch |
+| **Implementation Files** | `server/src/ssr/renderer.js`, `server/src/ssr/components/*`, `server/public/ssr/*` | `client/src/App.jsx`, `client/src/main.jsx` |
+
+---
+
+## 7. Payment Gateway Integration (Razorpay Test Mode)
+
+DevTrack AI integrates Razorpay Test Mode with strict server-side cryptographic verification to prevent tampering or unearned subscription upgrades.
+
+### Subscription Plans
+1. **Free Plan** (₹0/mo): 3 projects, 25 tasks per project, standard JavaScript modules.
+2. **Pro Plan** (₹149/mo): Unlimited projects & tasks, accelerated local Ollama mentorship, milestone velocity reports.
+3. **Premium Plan** (₹299/mo): Everything in Pro, 1-on-1 viva defense simulator, deep context memory, and Docker templates.
+
+### Payment Lifecycle & Cryptographic Security
+```
+[User on /pricing]
+       │
+       ▼  1. Click "Upgrade to Pro"
+[Express API: POST /api/payment/create-order] (Authenticated)
+       │
+       ├─► Validates plan ID & user session
+       ├─► Generates unique Razorpay test order ID (e.g. order_test_...)
+       ├─► Calculates exact amount in smallest currency unit (₹149 = 14900 paise)
+       └─► Stores record with status: "CREATED"
+       │
+       ▼  2. Returns { orderId, amount: 14900, currency: "INR", keyId }
+[Razorpay Checkout SDK Modal (Client)]
+       │
+       ├─► User submits test payment (Card / NetBanking / UPI)
+       └─► Razorpay returns { razorpay_order_id, razorpay_payment_id, razorpay_signature }
+       │
+       ▼  3. POST /api/payment/verify (Authenticated)
+[Express API: Cryptographic Verification]
+       │
+       ├─► Recomputes expected signature:
+       │     crypto.createHmac('sha256', RAZORPAY_KEY_SECRET)
+       │           .update(razorpay_order_id + '|' + razorpay_payment_id)
+       │           .digest('hex')
+       │
+       ├─► Timing-Safe Buffer Comparison:
+       │     crypto.timingSafeEqual(expectedBuffer, actualBuffer)
+       │
+       ├─► IF MISMATCH: Rejects with 400 Bad Request, marks payment "FAILED"
+       └─► IF MATCH: Marks payment "SUCCESS", activates 30-day Subscription in PostgreSQL
+       │
+       ▼  4. Returns 200 OK + Updated Subscription
+[Client / Dashboard]
+       │
+       └─► React AuthContext refreshes badge: PRO Active
+```
+
+### Key Security Implementations
+- **Zero Key Leakage**: `RAZORPAY_KEY_SECRET` resides strictly in `server/.env`.
+- **Timing-Safe Comparison**: `crypto.timingSafeEqual` prevents timing attacks on signatures.
+- **Relational Integrity**: `Payment` and `Subscription` models are bound to the authenticated `User` with PostgreSQL foreign key constraints.
+- **Tampering Invariant**: Subscriptions cannot be activated without a mathematically valid signature signed with the server's private secret.
+
+---
+
+## 8. Comprehensive Documentation Links
 
 - **[Product Requirements Document (`PRD.md`)](./PRD.md)**: Product vision, user personas, epics, functional and non-functional requirements.
 - **[High-Level Design (`HLD.md`)](./HLD.md)**: C4 diagrams, system topology, polyglot storage rationale, local AI subsystem, and security architecture.

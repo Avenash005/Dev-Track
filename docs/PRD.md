@@ -90,6 +90,24 @@ DevTrack AI solves this by integrating:
 - **FR-7.2**: Display local Ollama model configuration and provide an interactive connection handshake test.
 - **FR-7.3**: Display polyglot database connectivity status for PostgreSQL and MongoDB.
 - **FR-7.4**: Confirm active Dark Theme visual tokens.
+- **FR-7.5**: Display active subscription tier with a direct link to manage plans and upgrade.
+
+### Epic 8: Server-Side Rendering (SSR) for Public Information Pages
+- **FR-8.1**: The platform must support server-side rendering for public pages: Landing (`/`), Public Explore (`/explore`), and Public Project Showcase (`/p/:id`).
+- **FR-8.2**: Initial requests must be rendered on the Node.js/Express server using `react-dom/server` (`renderToString`) and delivered as fully formed HTML documents.
+- **FR-8.3**: Initial database metrics (total projects, tasks, completion rates) must be fetched on the server and injected into the HTML document via `window.__INITIAL_DATA__`.
+- **FR-8.4**: The client browser must hydrate the server-rendered DOM nodes using `ReactDOM.hydrateRoot()` to bind interactive event listeners without re-rendering or visual flickers.
+- **FR-8.5**: The existing authenticated Single-Page Application (CSR) on `/dashboard` must continue operating without breaking changes.
+- **FR-8.6**: SSR routes must maintain responsive design adhering to the DevTrack AI Dark Theme (`#09090B`).
+
+### Epic 9: Payment Gateway Integration (Razorpay Test Mode)
+- **FR-9.1**: Support three subscription tiers: Free (₹0/mo), Pro (₹149/mo), and Premium (₹299/mo).
+- **FR-9.2**: The backend must securely generate Razorpay test orders with accurate currency integer amounts in paise (₹149 = 14900 paise).
+- **FR-9.3**: Razorpay API secret keys must remain exclusively on the backend in environment variables and never be exposed in client bundles.
+- **FR-9.4**: Payment verification must recompute and validate cryptographic HMAC-SHA256 signatures server-side using timing-safe buffer comparison.
+- **FR-9.5**: The system must reject tampered or forged signatures with `400 Bad Request` and log the incident.
+- **FR-9.6**: Store subscription and payment transactions in PostgreSQL via Prisma with relational foreign keys bound to the authenticated user.
+- **FR-9.7**: Provide a `/pricing` page with plan feature matrices, active tier badges, Razorpay Checkout SDK modal integration, and payment cancellation callbacks.
 
 ---
 
@@ -97,8 +115,8 @@ DevTrack AI solves this by integrating:
 
 | NFR Category | Requirement | Target Specification |
 |---|---|---|
-| **Performance** | API response latency | < 50ms for relational queries; < 500ms for local LLM inference startup. |
-| **Security** | Transport & Credentials | Passwords salted with bcrypt; JWT signed with SHA-256; CORS strictly restricted. |
+| **Performance** | API response latency | < 50ms for relational queries; < 500ms for local LLM inference startup; < 20ms First Contentful Paint on SSR pages. |
+| **Security** | Transport & Credentials | Passwords salted with bcrypt; JWT signed with SHA-256; Razorpay HMAC-SHA256 signature verification with timing-safe comparison. |
 | **Reliability** | Database Fallback | Resilient Local Storage Engine activates automatically if PostgreSQL/MongoDB containers are stopped. |
 | **Ergonomics** | Visual Design | Dark theme palette adhering to `#09090B` background, `#27272A` borders, `#8B5CF6` violet accents. |
 | **Portability** | Deployment | Single-command startup via npm workspaces and Docker Compose containerization. |
@@ -106,7 +124,9 @@ DevTrack AI solves this by integrating:
 ---
 
 ## 5. Success Metrics & Key Performance Indicators (KPIs)
-- **100% Pass Rate** on automated test suite (28/28 assertions verified).
+- **100% Pass Rate** on automated test suite (52/52 assertions verified covering Auth, CRUD, AI, SSR, and Payments).
 - **Zero External API Cost**: 100% local operation with Ollama.
 - **Sub-3s Production Build**: Vite client compilation under 3 seconds.
+- **Pre-rendered First Paint**: Complete HTML delivered on initial GET request for public landing and explore routes.
+- **Cryptographic Security**: 100% server-side payment verification preventing unverified subscription activations.
 - **100% Curriculum Coverage**: Complete defense script covering all 22 required assessment topics.

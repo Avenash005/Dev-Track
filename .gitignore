@@ -42,3 +42,5 @@ Thumbs.db
 dev.db
 *.sqlite
 prisma/*.db
+*.node
+query_engine*

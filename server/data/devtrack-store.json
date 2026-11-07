@@ -23,9 +23,92 @@
       "password_hash": "$2a$10$O3u7yzLIuwJ6DNBBqdFCy.fN6QSrsou3zDszBU5Ms69/D1JAIbe6S",
       "created_at": "2026-11-07T03:41:25.787Z",
       "updated_at": "2026-11-07T03:41:25.787Z"
+    },
+    {
+      "id": "usr-1794029473428-765",
+      "name": "Jordan Lee",
+      "email": "student_1794029473232@university.edu",
+      "password_hash": "$2a$10$.EHeSdVhVpBzlBVl8BjQyu9licb.tZm7LNz0k0kgVAuPm7oh9AxWK",
+      "created_at": "2026-11-07T05:31:13.428Z",
+      "updated_at": "2026-11-07T05:31:13.428Z"
+    },
+    {
+      "id": "usr-1794029630680-823",
+      "name": "Jordan Lee",
+      "email": "student_1794029630608@university.edu",
+      "password_hash": "$2a$10$Bmn6JNa0T2EzGpz4u.kf2O0ymy5uqC84sfAggF5tD0.ZwtI99JrC6",
+      "created_at": "2026-11-07T05:33:50.680Z",
+      "updated_at": "2026-11-07T05:33:50.680Z"
+    },
+    {
+      "id": "usr-1794029762544-65",
+      "name": "Jordan Lee",
+      "email": "student_1794029762470@university.edu",
+      "password_hash": "$2a$10$OzsgDewancZGND/AR5n0Au7znxYtlO/MLJHDvi4KIWOvb7lFizDue",
+      "created_at": "2026-11-07T05:36:02.544Z",
+      "updated_at": "2026-11-07T05:36:02.544Z"
+    },
+    {
+      "id": "usr-1794029886462-235",
+      "name": "Jordan Lee",
+      "email": "student_1794029886389@university.edu",
+      "password_hash": "$2a$10$DsYaVDK30rBzAUz/17iFAuSw1BkpU0efB3SPg3xJmshfpEJU5WS7S",
+      "created_at": "2026-11-07T05:38:06.462Z",
+      "updated_at": "2026-11-07T05:38:06.462Z"
     }
   ],
-  "projects": [],
-  "tasks": [],
-  "conversations": []
+  "projects": [
+    {
+      "id": "proj-1794029473552-195",
+      "user_id": "usr-1794029473428-765",
+      "title": "Distributed KV Store in Go",
+      "description": "Implementing Raft consensus and write-ahead log replication.",
+      "status": "IN_PROGRESS",
+      "created_at": "2026-11-07T05:31:13.552Z",
+      "updated_at": "2026-11-07T05:31:13.552Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-1794029473557-851",
+      "project_id": "proj-1794029473552-195",
+      "title": "Implement Raft Leader Election",
+      "description": "Implement election timer and RequestVote RPC handlers.",
+      "status": "COMPLETED",
+      "priority": "HIGH",
+      "due_date": "2026-11-20",
+      "created_at": "2026-11-07T05:31:13.557Z",
+      "updated_at": "2026-11-07T05:31:13.561Z"
+    }
+  ],
+  "conversations": [],
+  "subscriptions": [
+    {
+      "id": "sub-1794029898690-881",
+      "user_id": "usr-1794029886462-235",
+      "plan": "pro",
+      "status": "ACTIVE",
+      "start_date": "2026-11-07T05:38:18.690Z",
+      "end_date": "2026-12-07T05:38:18.690Z",
+      "created_at": "2026-11-07T05:38:18.690Z",
+      "updated_at": "2026-11-07T05:38:18.690Z"
+    }
+  ],
+  "payments": [
+    {
+      "id": "pay-1794029898681-982",
+      "user_id": "usr-1794029886462-235",
+      "razorpay_order_id": "order_test_1794029898681_200f2253",
+      "razorpay_payment_id": "pay_test_1794029898688",
+      "razorpay_signature": "ed4683a0ea99082e22f4a9cd977c3a835d65f6769574ce2d7b1b5d668363d57d",
+      "amount": 14900,
+      "currency": "INR",
+      "plan": "pro",
+      "status": "FAILED",
+      "created_at": "2026-11-07T05:38:18.681Z",
+      "updated_at": "2026-11-07T05:38:18.698Z",
+      "error_code": "PAYMENT_FAILED",
+      "error_description": "Payment rejected."
+    }
+  ]
 }

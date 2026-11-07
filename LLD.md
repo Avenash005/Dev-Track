@@ -63,9 +63,33 @@ classDiagram
         +deleteConversation(userId, convId) Promise~Boolean~
     }
 
+    class PaymentController {
+        +getPlans(req, res, next)
+        +createOrder(req, res, next)
+        +verifyPayment(req, res, next)
+        +handleFailure(req, res, next)
+        +getSubscription(req, res, next)
+    }
+
+    class PaymentService {
+        +getPlans() Plan[]
+        +createOrder(userId, planId) Promise~Order~
+        +verifyPayment(userId, payload) Promise~VerifyResult~
+        +handlePaymentFailure(userId, payload) Promise~Boolean~
+        +getUserSubscription(userId) Promise~SubscriptionInfo~
+    }
+
+    class SSRRenderer {
+        +renderLanding(req, res) Promise~HTML~
+        +renderExplore(req, res) Promise~HTML~
+        +renderProject(req, res) Promise~HTML~
+        +buildHtmlShell(options) String
+    }
+
     AuthController --> AuthService
     ProjectController --> ProjectService
     TaskController --> TaskService
+    PaymentController --> PaymentService
 ```
 
 ---
@@ -155,6 +179,38 @@ CREATE TABLE "tasks" (
     "updated_at" TIMESTAMP(3) NOT NULL
 );
 CREATE INDEX "tasks_project_id_idx" ON "tasks"("project_id");
+
+-- Subscriptions Table
+CREATE TABLE "subscriptions" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "user_id" TEXT NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+    "plan" TEXT NOT NULL DEFAULT 'FREE',
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "start_date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "end_date" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL
+);
+CREATE INDEX "subscriptions_user_id_idx" ON "subscriptions"("user_id");
+
+-- Payments Table
+CREATE TABLE "payments" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "user_id" TEXT NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+    "razorpay_order_id" TEXT NOT NULL UNIQUE,
+    "razorpay_payment_id" TEXT UNIQUE,
+    "razorpay_signature" TEXT,
+    "amount" INTEGER NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'INR',
+    "plan" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'CREATED',
+    "error_code" TEXT,
+    "error_description" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL
+);
+CREATE INDEX "payments_user_id_idx" ON "payments"("user_id");
+CREATE INDEX "payments_razorpay_order_id_idx" ON "payments"("razorpay_order_id");
 ```
 
 ### 3.2 MongoDB Schema (`Conversation.js`)
@@ -263,3 +319,101 @@ When a user toggles a task in the UI:
 2. The UI immediately reflects the completion checkbox, strikethrough, and updated completion percentage score.
 3. In the background, `api.tasks.update(taskId, { status })` is dispatched.
 4. If the server request fails, the state automatically rolls back to the previous status and an error banner is presented.
+
+---
+
+## 6. Server-Side Rendering (SSR) Low-Level Mechanics
+
+### 6.1 SSR Rendering Pipeline (`server/src/ssr/renderer.js`)
+The renderer executes in Node.js ES Module mode using `react-dom/server`:
+```javascript
+// Data pre-fetching
+const stats = await dashboardService.getStats('system');
+const initialData = { stats, term: 'Academic Term 2026' };
+
+// Component rendering to static string
+const element = React.createElement(LandingPage, { initialData });
+const contentHtml = ReactDOMServer.renderToString(element);
+
+// Inject into HTML Shell with window.__INITIAL_DATA__
+const html = buildHtmlShell({
+  title: 'DevTrack AI — Student Productivity & Engineering OS',
+  description: 'AI-powered productivity and learning management platform.',
+  contentHtml,
+  initialData,
+  clientScript: '/ssr/hydrate-landing.js',
+});
+```
+
+### 6.2 Browser Hydration Pipeline (`server/public/ssr/hydrate-landing.js`)
+On initial HTML load, the browser reads `window.__INITIAL_DATA__` and hydrates without re-creating DOM nodes:
+```javascript
+const rootElement = document.getElementById('ssr-root');
+const initialData = window.__INITIAL_DATA__ || {};
+
+// Client hydration with ReactDOM.hydrateRoot
+ReactDOM.hydrateRoot(rootElement, React.createElement(LandingPage, { initialData }));
+```
+
+### 6.3 Implementation File Mapping
+- `server/src/ssr/renderer.js`: Controller functions (`renderLanding`, `renderExplore`, `renderProject`) and HTML template shell builder.
+- `server/src/ssr/components/LandingPage.js`: Pre-rendered React landing component featuring hero metrics, feature breakdown, interactive FAQ, and CTA.
+- `server/src/ssr/components/ExplorePage.js`: Public engineering project catalog pre-rendered from database records.
+- `server/src/ssr/components/PublicProjectPage.js`: Individual project detail showcase with pre-rendered task lists and completion velocity.
+- `server/public/ssr/hydrate-landing.js`: Client hydration bundle for the landing page.
+- `server/public/ssr/hydrate-project.js`: Client hydration bundle for project showcase.
+
+---
+
+## 7. Payment Gateway (Razorpay) Cryptographic Implementation
+
+### 7.1 Order Creation (`server/src/services/paymentService.js`)
+```javascript
+const razorpay_order_id = `order_test_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+const amountInPaise = plan.amount; // ₹149 = 14900 paise
+
+// Persist payment record with CREATED status
+await prisma.payment.create({
+  data: {
+    user_id: userId,
+    razorpay_order_id,
+    amount: amountInPaise,
+    currency: 'INR',
+    plan: plan.id,
+    status: 'CREATED',
+  },
+});
+```
+
+### 7.2 HMAC-SHA256 Signature Verification (`server/src/services/paymentService.js`)
+```javascript
+// 1. Calculate HMAC-SHA256 signature
+const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+const expectedSignature = crypto
+  .createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+  .update(body.toString())
+  .digest('hex');
+
+// 2. Constant-time buffer comparison to prevent timing side-channel attacks
+let isAuthentic = false;
+const expectedBuf = Buffer.from(expectedSignature, 'utf-8');
+const actualBuf = Buffer.from(razorpay_signature, 'utf-8');
+if (expectedBuf.length === actualBuf.length) {
+  isAuthentic = crypto.timingSafeEqual(expectedBuf, actualBuf);
+}
+
+// 3. Update database state on verification
+if (isAuthentic) {
+  await prisma.payment.update({
+    where: { razorpay_order_id },
+    data: { razorpay_payment_id, razorpay_signature, status: 'SUCCESS' },
+  });
+  await prisma.subscription.upsert({ ... });
+}
+```
+
+### 7.3 Frontend Pricing & Checkout Integration (`client/src/pages/PricingPage.jsx`)
+- Injects `https://checkout.razorpay.com/v1/checkout.js` dynamically.
+- Triggers `new window.Razorpay(options).open()`.
+- Captures Razorpay success payload and invokes `POST /api/payment/verify`.
+- Handles modal dismiss / cancellation events via `POST /api/payment/failure`.

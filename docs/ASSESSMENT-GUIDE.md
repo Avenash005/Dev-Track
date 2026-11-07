@@ -1,6 +1,6 @@
 # DevTrack AI — Student Assessment Preparation Guide & Demonstration Script
 
-This guide provides a comprehensive preparation script covering all **22 core curriculum topics** evaluated during technical presentations, code reviews, and viva examinations.
+This guide provides a comprehensive preparation script covering all **24 core curriculum topics** (including Server-Side Rendering and Payment Gateway Integration) evaluated during technical presentations, code reviews, and viva examinations.
 
 ---
 
@@ -178,5 +178,21 @@ This guide provides a comprehensive preparation script covering all **22 core cu
 - **Where to show**: `server/test-api.js`.
 - **Examiner Question**: *"How do you verify that your API meets requirements?"*
 - **Student Answer**:
-  > *"We execute `node test-api.js`, which runs an automated 28-assertion test suite verifying health checks, registration, token generation, 409 duplicate handling, 401 unauthorized rejection, project CRUD, task CRUD, dashboard statistics, and AI chat. Every assertion must pass with 0 failures."*
+  > *"We execute `node test-api.js`, which runs an automated 52-assertion test suite verifying health checks, registration, token generation, 409 duplicate handling, 401 unauthorized rejection, project CRUD, task CRUD, dashboard statistics, AI chat, SSR public HTML pre-rendering, and Razorpay payment order creation, signature verification, tampering defense, and subscription updates. Every assertion must pass with 0 failures."*
+
+---
+
+### Topic 23: Server-Side Rendering (SSR) & React Hydration
+- **Where to show**: `server/src/ssr/renderer.js`, `server/src/ssr/components/LandingPage.js`, `server/public/ssr/hydrate-landing.js`, `GET /` and `GET /explore`.
+- **Examiner Question**: *"Walk me through how a request reaches the server, fetches data, generates pre-rendered HTML, and hydrates on the client."*
+- **Student Answer**:
+  > *"When a client requests `GET /`, Express intercepts the route in `server/src/server.js`. The server fetches live project and task aggregates directly from the database, constructs a React component tree (`<LandingPage initialData={stats} />`), and invokes `ReactDOMServer.renderToString()` to produce a static HTML markup string. We embed this inside an HTML document shell that serializes the data into `window.__INITIAL_DATA__` and references the client hydration script `/ssr/hydrate-landing.js`.\n\nThe browser receives fully formed, search-engine-crawlable HTML with zero layout shift (First Contentful Paint occurs immediately). Once the browser loads `hydrate-landing.js`, `ReactDOM.hydrateRoot()` matches the existing DOM tree and attaches JavaScript event listeners—such as our interactive FAQ accordion—without re-rendering DOM nodes. This demonstrates the performance and SEO benefits of SSR alongside the interactivity of React."*
+
+---
+
+### Topic 24: Payment Gateway Integration & HMAC-SHA256 Cryptographic Verification
+- **Where to show**: `server/src/services/paymentService.js`, `server/src/controllers/paymentController.js`, `client/src/pages/PricingPage.jsx`, `server/test-api.js`.
+- **Examiner Question**: *"Why can't you trust payment success callbacks from the frontend, and how does HMAC-SHA256 verification work?"*
+- **Student Answer**:
+  > *"A client-side browser is an untrusted environment. A malicious user could tamper with frontend JavaScript, intercept network traffic, or forge a 'success' response payload to gain free subscription access without paying. To prevent this, we use Razorpay Test Mode with strict two-phase server verification:\n\n1. In phase one (`POST /api/payment/create-order`), Express creates a unique order record with status `CREATED` and calculates the exact integer price in paise (₹149 = 14900 paise). The secret key `RAZORPAY_KEY_SECRET` remains exclusively on the backend.\n2. In phase two (`POST /api/payment/verify`), the browser sends back `razorpay_order_id`, `razorpay_payment_id`, and `razorpay_signature`. The backend computes `expectedSignature = crypto.createHmac('sha256', secret).update(order_id + '|' + payment_id).digest('hex')` and validates it against `razorpay_signature` using `crypto.timingSafeEqual` to prevent timing attacks. Only if the cryptographic signature matches is the payment marked `SUCCESS` and the user's `Subscription` upgraded in PostgreSQL."*
 

@@ -85,5 +85,14 @@ export const api = {
     getConversationById: (id) => request(`/ai/conversations/${id}`),
     deleteConversation: (id) => request(`/ai/conversations/${id}`, { method: 'DELETE' }),
   },
+
+  // Payment & Subscription API
+  payment: {
+    getPlans: () => request('/payment/plans'),
+    createOrder: (planId) => request('/payment/create-order', { method: 'POST', body: JSON.stringify({ planId }) }),
+    verify: (body) => request('/payment/verify', { method: 'POST', body: JSON.stringify(body) }),
+    failure: (body) => request('/payment/failure', { method: 'POST', body: JSON.stringify(body) }),
+    getSubscription: () => request('/payment/subscription'),
+  },
 };
 

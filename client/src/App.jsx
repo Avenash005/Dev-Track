@@ -11,6 +11,7 @@ import TasksPage from './pages/TasksPage';
 import AIAssistantPage from './pages/AIAssistantPage';
 import LearnConceptsPage from './pages/LearnConceptsPage';
 import SettingsPage from './pages/SettingsPage';
+import PricingPage from './pages/PricingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="tasks" element={<TasksPage />} />
               <Route path="ai" element={<AIAssistantPage />} />
               <Route path="learn" element={<LearnConceptsPage />} />
+              <Route path="pricing" element={<PricingPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>

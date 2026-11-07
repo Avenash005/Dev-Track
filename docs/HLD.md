@@ -42,11 +42,13 @@ flowchart TD
     end
 
     User -->|HTTPS/HTTP on :5173| WebUI
+    User -->|Public GET /, /explore, /p/:id on :5000| APIServer
     WebUI -->|RESTful JSON Calls / Bearer JWT on :5000| APIServer
     APIServer -->|Prisma Client| PostgresDB
     APIServer -->|Mongoose ODM| MongoDB
     APIServer -.->|Automatic Fallback| LocalStore
     APIServer -->|Local HTTP Proxy| OllamaEngine
+    APIServer -->|Test Order Creation & HMAC Verify| RazorpayGateway["Razorpay Test Gateway"]
     OllamaEngine --> LLM
 ```
 
@@ -161,3 +163,74 @@ sequenceDiagram
 - **Monorepo Workspaces**: Orchestrated via npm workspaces (`package.json`).
 - **Database Provisioning**: Declarative multi-container setup via [`docker-compose.yml`](file:///d:/Project/docker-compose.yml).
 - **Automated CI/CD**: GitHub Actions workflow ([`.github/workflows/ci.yml`](file:///d:/Project/.github/workflows/ci.yml)) tests every pull request and push to `main` and `develop`.
+
+---
+
+## 7. Server-Side Rendering (SSR) Subsystem Architecture
+
+DevTrack AI implements Server-Side Rendering for public, indexable pages while preserving the high-interactivity React SPA for authenticated users:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Browser as User / Web Crawler
+    participant Express as Express Server (:5000)
+    participant DB as PostgreSQL / LocalDb Store
+    participant SSR as SSR Engine (ReactDOMServer)
+    participant Hydrate as Client Hydration Script
+
+    Browser->>Express: GET / or GET /explore
+    Express->>DB: Query aggregate metrics (totalProjects, tasks, completionRate)
+    DB-->>Express: Return metrics payload
+    Express->>SSR: ReactDOMServer.renderToString(<LandingPage initialData={metrics} />)
+    SSR-->>Express: Returns pre-rendered static HTML fragment
+    Express->>Express: Injects HTML into document shell with window.__INITIAL_DATA__
+    Express-->>Browser: 200 OK (Full HTML Document with styles and meta tags)
+    Note over Browser: Browser renders content immediately (Instant First Contentful Paint)
+    Browser->>Express: GET /ssr/hydrate-landing.js
+    Express-->>Browser: Hydration JavaScript bundle
+    Browser->>Hydrate: ReactDOM.hydrateRoot(root, <LandingPage initialData={window.__INITIAL_DATA__} />)
+    Note over Browser: Interactive event listeners attached (Hydration Complete)
+```
+
+### SSR vs CSR Strategy & Boundary
+- **Public Routes (`/`, `/explore`, `/p/:id`)**: Handled by Express SSR engine. Fully rendered on server, zero initial layout shift, instant SEO indexing.
+- **Application Workspace (`/dashboard`, `/projects`, `/tasks`, `/ai`, `/learn`, `/pricing`, `/settings`)**: Handled by React 18 SPA (Vite) with Client-Side Rendering (CSR), instant routing transitions without full-page reloads.
+
+---
+
+## 8. Payment Gateway Subsystem Architecture (Razorpay Test Mode)
+
+The payment subsystem handles subscription upgrades (`FREE` -> `PRO` -> `PREMIUM`) using Razorpay Test Mode with server-side HMAC-SHA256 signature verification:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Student as Student Developer
+    participant Client as React Client (:5173 /pricing)
+    participant Express as Express Server (:5000)
+    participant RzpSDK as Razorpay Checkout Modal
+    participant PG as PostgreSQL (Prisma)
+
+    Student->>Client: Selects Pro Plan (₹149/mo) and clicks "Upgrade"
+    Client->>Express: POST /api/payment/create-order (Bearer JWT, { planId: "PRO" })
+    Express->>Express: Validates user session & computes amount (14900 paise)
+    Express->>PG: Creates Payment record (status: "CREATED", razorpay_order_id)
+    Express-->>Client: 201 Created ({ orderId, amount: 14900, currency: "INR", keyId })
+    Client->>RzpSDK: new Razorpay(options).open()
+    Note over RzpSDK: User enters test payment credentials (success flow)
+    RzpSDK-->>Client: Checkout Success ({ razorpay_order_id, razorpay_payment_id, razorpay_signature })
+    Client->>Express: POST /api/payment/verify (Bearer JWT, payment payload)
+    Express->>Express: Recomputes expectedSignature = HMAC-SHA256(order_id + "|" + payment_id, SECRET)
+    Express->>Express: Validates crypto.timingSafeEqual(expectedBuf, actualBuf)
+    alt Signature Valid
+        Express->>PG: Updates Payment (status: "SUCCESS", razorpay_payment_id)
+        Express->>PG: Upserts Subscription (plan: "PRO", status: "ACTIVE", end_date: +30 days)
+        Express-->>Client: 200 OK ({ verified: true, subscription: activeSubscription })
+        Client-->>Student: Renders success modal & updates Pro badge in header
+    else Tampered / Invalid Signature
+        Express->>PG: Updates Payment (status: "FAILED", error_code: "SIGNATURE_MISMATCH")
+        Express-->>Client: 400 Bad Request ("Signature verification failed")
+        Client-->>Student: Displays security rejection alert
+    end
+```

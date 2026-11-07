@@ -1,5 +1,9 @@
 // DevTrack AI — Automated API Verification Suite
+import crypto from 'crypto';
+
+const ROOT_URL = 'http://localhost:5000';
 const BASE_URL = 'http://localhost:5000/api';
+const RAZORPAY_TEST_SECRET = process.env.RAZORPAY_KEY_SECRET || 'devtrack_razorpay_secret_test_2026';
 
 async function testSuite() {
   console.log('\n======================================================');
@@ -198,6 +202,130 @@ async function testSuite() {
       headers: { Authorization: `Bearer ${token}` },
     });
     assert(delProjRes.status === 204, `DELETE /api/projects/:id returned 204 No Content`);
+
+    // =========================================================================
+    // 17. Server-Side Rendering (SSR) Route Verifications
+    // =========================================================================
+    console.log('\n--- Verifying Server-Side Rendering (SSR) ---');
+
+    // 17.1 SSR Landing Page (GET /)
+    const ssrLandingRes = await fetch(`${ROOT_URL}/`);
+    const ssrLandingHtml = await ssrLandingRes.text();
+    assert(ssrLandingRes.status === 200, `SSR GET / returned 200 OK`);
+    assert(ssrLandingRes.headers.get('content-type')?.includes('text/html'), `SSR GET / returned text/html content-type`);
+    assert(ssrLandingHtml.toLowerCase().includes('<!doctype html>'), `SSR HTML contains <!DOCTYPE html> preamble`);
+    assert(ssrLandingHtml.includes('DevTrack AI'), `SSR pre-rendered HTML contains brand title 'DevTrack AI'`);
+    assert(ssrLandingHtml.includes('window.__INITIAL_DATA__'), `SSR HTML contains server injected window.__INITIAL_DATA__`);
+    assert(ssrLandingHtml.includes('hydrate-landing.js'), `SSR HTML references browser hydration bundle`);
+
+    // 17.2 SSR Explore Projects Page (GET /explore)
+    const ssrExploreRes = await fetch(`${ROOT_URL}/explore`);
+    const ssrExploreHtml = await ssrExploreRes.text();
+    assert(ssrExploreRes.status === 200, `SSR GET /explore returned 200 OK`);
+    assert(ssrExploreHtml.includes('Explore Public Engineering Projects'), `SSR explore page pre-renders public catalog`);
+
+    // 17.3 SSR Public Project Details (GET /p/proj-1)
+    const ssrProjRes = await fetch(`${ROOT_URL}/p/proj-1`);
+    const ssrProjHtml = await ssrProjRes.text();
+    assert(ssrProjRes.status === 200, `SSR GET /p/proj-1 returned 200 OK`);
+    assert(ssrProjHtml.includes('Public Showcase') || ssrProjHtml.includes('DevTrack'), `SSR project page pre-renders project showcase`);
+
+    // =========================================================================
+    // 18. Payment Gateway (Razorpay Test Mode) Verifications
+    // =========================================================================
+    console.log('\n--- Verifying Razorpay Payment Gateway ---');
+
+    // 18.1 Fetch subscription plans (Public endpoint)
+    const plansRes = await fetch(`${BASE_URL}/payment/plans`);
+    const plansData = await plansRes.json();
+    assert(plansRes.status === 200, `GET /api/payment/plans returned 200 OK`);
+    const planList = Array.isArray(plansData.data) ? plansData.data : plansData.data?.plans || [];
+    assert(Array.isArray(planList) && planList.length === 3, `Returned exactly 3 subscription tiers (Free, Pro, Premium)`);
+    assert(planList.find(p => p.id === 'pro')?.price === 149, `Pro plan priced correctly at ₹149/mo`);
+
+    // 18.2 Create order without authentication (Security check -> 401)
+    const unauthOrderRes = await fetch(`${BASE_URL}/payment/create-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId: 'pro' }),
+    });
+    assert(unauthOrderRes.status === 401, `POST /api/payment/create-order without auth rejected with 401 Unauthorized`);
+
+    // 18.3 Create order with authenticated user
+    const orderRes = await fetch(`${BASE_URL}/payment/create-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ planId: 'pro' }),
+    });
+    const orderData = await orderRes.json();
+    assert(orderRes.status === 201, `POST /api/payment/create-order returned 201 Created`);
+    assert(!!orderData.data?.orderId, `Received Razorpay order ID: ${orderData.data?.orderId}`);
+    assert(orderData.data?.amount === 14900, `Order amount in paise equals 14900 (₹149.00)`);
+    const testOrderId = orderData.data?.orderId;
+
+    // 18.4 Verify signature tampering rejection (Security check -> 400)
+    const tamperedRes = await fetch(`${BASE_URL}/payment/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        razorpay_order_id: testOrderId,
+        razorpay_payment_id: 'pay_test_tampered_123',
+        razorpay_signature: 'fake_tampered_signature_hex_000000000000000000000000',
+      }),
+    });
+    assert(tamperedRes.status === 400, `Tampered payment signature correctly rejected with 400 Bad Request`);
+
+    // 18.5 Verify valid HMAC-SHA256 signature (Server verification -> 200)
+    const testPaymentId = `pay_test_${Date.now()}`;
+    const validSignature = crypto
+      .createHmac('sha256', RAZORPAY_TEST_SECRET)
+      .update(`${testOrderId}|${testPaymentId}`)
+      .digest('hex');
+
+    const validVerifyRes = await fetch(`${BASE_URL}/payment/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        razorpay_order_id: testOrderId,
+        razorpay_payment_id: testPaymentId,
+        razorpay_signature: validSignature,
+      }),
+    });
+    const validVerifyData = await validVerifyRes.json();
+    assert(validVerifyRes.status === 200, `Valid HMAC-SHA256 signature verified with 200 OK`);
+    assert(validVerifyData.data?.subscription?.plan === 'pro', `User subscription tier successfully updated to PRO`);
+    assert(validVerifyData.data?.subscription?.status === 'ACTIVE', `Subscription status is ACTIVE`);
+
+    // 18.6 Fetch active subscription status
+    const subRes = await fetch(`${BASE_URL}/payment/subscription`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const subData = await subRes.json();
+    assert(subRes.status === 200, `GET /api/payment/subscription returned 200 OK`);
+    assert(subData.data?.subscription?.plan === 'pro', `Active subscription reflects PRO plan`);
+
+    // 18.7 Record payment failure event
+    const failRes = await fetch(`${BASE_URL}/payment/failure`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        razorpay_order_id: testOrderId,
+        reason: 'Payment cancelled by user test',
+      }),
+    });
+    assert(failRes.status === 200, `POST /api/payment/failure successfully logged failure record`);
 
     console.log(`\n======================================================`);
     console.log(`  Test Results: ${passed} Passed, ${failed} Failed`);

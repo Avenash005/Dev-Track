@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../generated/prisma-client/index.js';
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
@@ -18,19 +18,27 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 function loadLocalStore() {
-  if (fs.existsSync(STORE_FILE)) {
-    try {
-      return JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8'));
-    } catch {
-      // Fallback if corrupted
-    }
-  }
-  return {
+  let store = {
     users: [],
     projects: [],
     tasks: [],
     conversations: [],
+    subscriptions: [],
+    payments: [],
   };
+
+  if (fs.existsSync(STORE_FILE)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8'));
+      store = { ...store, ...parsed };
+      if (!store.subscriptions) store.subscriptions = [];
+      if (!store.payments) store.payments = [];
+      return store;
+    } catch {
+      // Fallback if corrupted
+    }
+  }
+  return store;
 }
 
 function saveLocalStore(data) {
@@ -84,4 +92,3 @@ export async function connectDatabases() {
     console.warn('[DB] AI Conversations will persist to local JSON store.');
   }
 }
-

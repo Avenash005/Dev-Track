@@ -17,6 +17,19 @@ export const AuthProvider = ({ children }) => {
     return null;
   });
   const [loading, setLoading] = useState(true);
+  const [subscription, setSubscription] = useState(null);
+
+  const fetchSubscription = async () => {
+    if (!token) return;
+    try {
+      const res = await api.payment.getSubscription();
+      if (res?.data?.subscription) {
+        setSubscription(res.data.subscription);
+      }
+    } catch (err) {
+      console.warn('[AUTH] Could not fetch subscription:', err.message);
+    }
+  };
 
   // Validate session on mount
   useEffect(() => {
@@ -28,6 +41,7 @@ export const AuthProvider = ({ children }) => {
             setUser(res.data);
             localStorage.setItem('devtrack_user', JSON.stringify(res.data));
           }
+          await fetchSubscription();
         } catch (err) {
           console.warn('[AUTH] Session token expired or invalid:', err.message);
           // If 401, clear expired token
@@ -90,6 +104,8 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        subscription,
+        fetchSubscription,
         isAuthenticated: !!token,
         loading,
       }}

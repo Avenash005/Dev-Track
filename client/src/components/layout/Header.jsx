@@ -1,5 +1,6 @@
 import React from 'react';
-import { Menu, Search, Bell, Plus, Sparkles, FolderPlus } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Menu, Search, Bell, Plus, Sparkles, FolderPlus, CreditCard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function Header({
@@ -9,7 +10,7 @@ export default function Header({
   searchQuery,
   setSearchQuery,
 }) {
-  const { user } = useAuth();
+  const { user, subscription } = useAuth();
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border bg-background/80 px-4 sm:px-6 backdrop-blur-md">
@@ -65,6 +66,16 @@ export default function Header({
           <Bell className="h-4 w-4" />
           <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
         </button>
+
+        {/* Subscription Plan Badge */}
+        <Link
+          to="/pricing"
+          title="Manage Subscription"
+          className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary-light hover:bg-primary/20 transition"
+        >
+          <CreditCard className="h-3 w-3" />
+          <span>{subscription?.plan ? subscription.plan.toUpperCase() : 'FREE'}</span>
+        </Link>
 
         {/* User avatar indicator */}
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 border border-border text-xs font-semibold text-text-primary">
