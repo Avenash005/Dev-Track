@@ -2,6 +2,7 @@ import { projectService } from '../services/projectService.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { redisCache } from '../config/redis.js';
 import { cacheKeys, cacheService, CACHE_TTL } from '../services/cacheService.js';
+import { socketEvents } from '../config/socket.js';
 
 export const projectController = {
   async getProjects(req, res, next) {
@@ -59,6 +60,10 @@ export const projectController = {
       // Invalidate relevant user project and dashboard caches
       await cacheService.invalidateProjectCaches(req.user.id);
 
+      // Real-time WebSocket emission to authenticated user room
+      socketEvents.emitProjectCreated(req.user.id, project);
+      socketEvents.emitDashboardUpdated(req.user.id);
+
       return apiResponse.created(res, project, 'Project created successfully.');
     } catch (error) {
       next(error);
@@ -72,6 +77,10 @@ export const projectController = {
       // Invalidate relevant user project and dashboard caches
       await cacheService.invalidateProjectCaches(req.user.id, req.params.id);
 
+      // Real-time WebSocket emissions
+      socketEvents.emitProjectUpdated(req.user.id, project);
+      socketEvents.emitDashboardUpdated(req.user.id);
+
       return apiResponse.success(res, project, 'Project updated successfully.');
     } catch (error) {
       next(error);
@@ -84,6 +93,10 @@ export const projectController = {
 
       // Invalidate relevant user project and dashboard caches
       await cacheService.invalidateProjectCaches(req.user.id, req.params.id);
+
+      // Real-time WebSocket emissions
+      socketEvents.emitProjectDeleted(req.user.id, req.params.id);
+      socketEvents.emitDashboardUpdated(req.user.id);
 
       return apiResponse.noContent(res);
     } catch (error) {

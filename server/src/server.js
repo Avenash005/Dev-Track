@@ -1,3 +1,4 @@
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -5,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { env, validateEnv } from './config/env.js';
 import { connectDatabases } from './config/database.js';
 import { initRedis, redisCache, cacheStats } from './config/redis.js';
+import { initSocket, socketStats } from './config/socket.js';
 import { loggingMiddleware } from './middleware/loggingMiddleware.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
 import { apiResponse } from './utils/apiResponse.js';
@@ -87,8 +89,13 @@ app.get('/api/health', (req, res) => {
         status: redisCache.isReady() ? 'connected' : 'offline (resilient cache-aside)',
         stats: cacheStats,
       },
+      websocket: {
+        status: 'operational',
+        transports: ['websocket', 'polling'],
+        stats: socketStats,
+      },
     },
-    'DevTrack AI API Server & SSR Engine is operational.'
+    'DevTrack AI API Server, SSR Engine & WebSocket Gateway is operational.'
   );
 });
 
@@ -102,6 +109,15 @@ app.get('/api/cache/stats', (req, res) => {
       stats: cacheStats,
     },
     'Cache telemetry retrieved.'
+  );
+});
+
+// Socket.IO telemetry route
+app.get('/api/socket/stats', (req, res) => {
+  return apiResponse.success(
+    res,
+    socketStats,
+    'Socket.IO telemetry retrieved.'
   );
 });
 
@@ -121,17 +137,22 @@ app.use((req, res) => {
 // 10. Centralized Error Handling Middleware
 app.use(errorHandler);
 
-// 11. Start Server
+// 11. Create HTTP Server & Bind Socket.IO
+const httpServer = http.createServer(app);
+const io = initSocket(httpServer);
+
+// 12. Start Server
 async function startServer() {
   await connectDatabases();
   await initRedis();
 
-  const server = app.listen(env.PORT, () => {
+  const server = httpServer.listen(env.PORT, () => {
     console.log(`\n======================================================`);
     console.log(`  DevTrack AI Express Server running on port ${env.PORT}`);
     console.log(`  Environment: ${env.NODE_ENV}`);
     console.log(`  SSR Public Landing Page: http://localhost:${env.PORT}/`);
     console.log(`  SSR Public Projects:     http://localhost:${env.PORT}/explore`);
+    console.log(`  WebSocket Real-Time:     ws://localhost:${env.PORT} (Socket.IO)`);
     console.log(`  Health Check:            http://localhost:${env.PORT}/api/health`);
     console.log(`  Frontend SPA URL:        ${env.FRONTEND_URL}`);
     console.log(`======================================================\n`);
@@ -146,4 +167,5 @@ startServer().catch((err) => {
   process.exit(1);
 });
 
+export { app, httpServer, io };
 export default app;

@@ -106,11 +106,32 @@ classDiagram
         +flushUser(userId) Promise~Number~
     }
 
+    class SocketServer {
+        -io: SocketIOServer
+        -socketStats: Object
+        +initSocket(httpServer) SocketIOServer
+        +emitToUser(userId, event, payload) Boolean
+        +socketEvents: Object
+    }
+
+    class SocketServiceClient {
+        -socket: Socket
+        -listeners: Map
+        +connect(token) Socket
+        +disconnect() void
+        +on(event, callback) void
+        +off(event, callback) void
+        +emit(event, data) void
+        +isConnected() Boolean
+    }
+
     AuthController --> AuthService
     ProjectController --> ProjectService
     ProjectController --> CacheService
+    ProjectController --> SocketServer
     TaskController --> TaskService
     TaskController --> CacheService
+    TaskController --> SocketServer
     PaymentController --> PaymentService
     CacheService --> RedisCache
 ```
@@ -567,4 +588,108 @@ export const updateTask = async (req, res, next) => {
   return sendSuccess(res, 200, 'Task updated successfully', updatedTask);
 };
 ```
+
+---
+
+## 9. WebSocket Real-Time Communication & Event Contracts
+
+### 9.1 Socket Handshake & Room Architecture (`server/src/config/socket.js`)
+
+```javascript
+// 1. JWT Authentication Handshake Middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '');
+  if (!token) return next(new Error('Authentication error: Bearer token is required.'));
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+    socket.user = decoded;
+    next();
+  } catch (err) {
+    next(new Error('Authentication error: Invalid or expired token.'));
+  }
+});
+
+// 2. User-Specific Room Assignment
+io.on('connection', (socket) => {
+  const userRoom = `user:${socket.user.id}`;
+  socket.join(userRoom);
+  socket.on('disconnect', () => { /* cleanup */ });
+});
+
+// 3. Domain Event Emitter Utility
+export function emitToUser(userId, event, payload = {}) {
+  io.to(`user:${userId}`).emit(event, {
+    event,
+    data: payload,
+    timestamp: new Date().toISOString(),
+  });
+}
+```
+
+### 9.2 Client Socket Service (`client/src/services/socket.js`)
+
+```javascript
+class SocketService {
+  connect(token) {
+    if (this.socket?.connected) return this.socket;
+    this.socket = io(SOCKET_URL, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+    });
+    return this.socket;
+  }
+
+  on(event, callback) {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event).add(callback);
+    this.socket?.on(event, callback);
+  }
+
+  off(event, callback) {
+    this.listeners.get(event)?.delete(callback);
+    this.socket?.off(event, callback);
+  }
+
+  disconnect() {
+    this.socket?.disconnect();
+    this.socket = null;
+  }
+}
+export const socketService = new SocketService();
+```
+
+### 9.3 React Context Lifecycle Subscription (`client/src/context/DataContext.jsx`)
+
+```javascript
+useEffect(() => {
+  if (!isAuthenticated) return;
+
+  const handleTaskCreated = (payload) => {
+    const task = payload?.data?.task || payload?.task;
+    if (!task) return;
+    setTasks((prev) => (prev.some((t) => t.id === task.id) ? prev : [task, ...prev]));
+    notifyRealtime(`New task "${task.title}" created via real-time sync`, 'success');
+  };
+
+  const handleTaskStatusChanged = (payload) => {
+    const task = payload?.data?.task || payload?.task;
+    if (!task) return;
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, ...task } : t)));
+    notifyRealtime(`Task status changed to ${task.status}`, 'info');
+  };
+
+  socketService.on('task:created', handleTaskCreated);
+  socketService.on('task:status_changed', handleTaskStatusChanged);
+
+  // Automatic cleanup on unmount / auth switch prevents memory leaks
+  return () => {
+    socketService.off('task:created', handleTaskCreated);
+    socketService.off('task:status_changed', handleTaskStatusChanged);
+  };
+}, [isAuthenticated, notifyRealtime]);
+```
+
 

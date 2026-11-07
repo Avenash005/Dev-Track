@@ -1,5 +1,6 @@
 // DevTrack AI — Automated API Verification Suite
 import crypto from 'crypto';
+import { io } from 'socket.io-client';
 
 const ROOT_URL = 'http://localhost:5000';
 const BASE_URL = 'http://localhost:5000/api';
@@ -436,6 +437,149 @@ async function testSuite() {
     assert(cacheStatsRes.status === 200, `GET /api/cache/stats returned 200 OK`);
     assert(cacheStatsData.data?.stats?.hits >= 3, `Cache telemetry recorded multiple cache HITs (${cacheStatsData.data?.stats?.hits})`);
     assert(cacheStatsData.data?.stats?.invalidations >= 2, `Cache telemetry recorded cache invalidation events (${cacheStatsData.data?.stats?.invalidations})`);
+
+    // =========================================================================
+    // 20. WEBSOCKET REAL-TIME COMMUNICATION (SOCKET.IO)
+    // =========================================================================
+    console.log('\n--- Verifying WebSocket Real-Time Communication (Socket.IO) ---');
+
+    // 20.1 Reject unauthorized connection (no token)
+    const unauthErr = await new Promise((resolve) => {
+      const s = io(ROOT_URL, { transports: ['websocket'], reconnection: false, timeout: 2000 });
+      s.on('connect_error', (err) => { s.disconnect(); resolve(err.message); });
+      s.on('connect', () => { s.disconnect(); resolve(null); });
+    });
+    assert(unauthErr && unauthErr.includes('Authentication error'), 'Unauthorized WebSocket connection correctly rejected');
+
+    // 20.2 Reject connection with invalid token signature
+    const invalidTokenErr = await new Promise((resolve) => {
+      const s = io(ROOT_URL, { auth: { token: 'invalid.token.signature' }, transports: ['websocket'], reconnection: false, timeout: 2000 });
+      s.on('connect_error', (err) => { s.disconnect(); resolve(err.message); });
+      s.on('connect', () => { s.disconnect(); resolve(null); });
+    });
+    assert(invalidTokenErr && invalidTokenErr.includes('Authentication error'), 'Tampered token rejected with Authentication error');
+
+    // 20.3 Connect User A and User B to Socket.IO
+    const userASocket = io(ROOT_URL, {
+      auth: { token },
+      transports: ['websocket'],
+      reconnection: false,
+    });
+    await new Promise((resolve, reject) => {
+      userASocket.on('connect', resolve);
+      userASocket.on('connect_error', reject);
+    });
+    assert(userASocket.connected, 'User A connected successfully to WebSocket server');
+
+    const userBSocket = io(ROOT_URL, {
+      auth: { token: tokenB },
+      transports: ['websocket'],
+      reconnection: false,
+    });
+    await new Promise((resolve, reject) => {
+      userBSocket.on('connect', resolve);
+      userBSocket.on('connect_error', reject);
+    });
+    assert(userBSocket.connected, 'User B connected successfully to WebSocket server');
+
+    // 20.4 Multi-Client Event Dispatch & User-Specific Room Isolation
+    let userBReceivedAny = false;
+    userBSocket.on('task:created', () => { userBReceivedAny = true; });
+    userBSocket.on('project:created', () => { userBReceivedAny = true; });
+
+    // User A creates a project
+    const pCreatedPromise = new Promise((resolve) => userASocket.once('project:created', resolve));
+    const dashUpdatedPromise1 = new Promise((resolve) => userASocket.once('dashboard:updated', resolve));
+
+    const wsProjRes = await fetch(`${BASE_URL}/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        title: 'WebSocket Real-Time Architecture',
+        description: 'Testing full-duplex Socket.IO events and room isolation.',
+        status: 'IN_PROGRESS',
+      }),
+    });
+    const wsProjData = await wsProjRes.json();
+    const wsProjId = wsProjData.data?.id;
+
+    const pCreatedPayload = await pCreatedPromise;
+    await dashUpdatedPromise1;
+    assert(pCreatedPayload?.data?.project?.id === wsProjId, `User A received real-time project:created event for ID: ${wsProjId}`);
+    assert(userBReceivedAny === false, 'User B received zero events (User room isolation verified)');
+
+    // User A creates a task
+    const tCreatedPromise = new Promise((resolve) => userASocket.once('task:created', resolve));
+    const wsTaskRes = await fetch(`${BASE_URL}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        title: 'Real-Time Task Synchronization',
+        description: 'Verify instant UI sync across multiple tabs without refresh.',
+        priority: 'HIGH',
+        status: 'PENDING',
+        projectId: wsProjId,
+      }),
+    });
+    const wsTaskData = await wsTaskRes.json();
+    const wsTaskId = wsTaskData.data?.id;
+
+    const tCreatedPayload = await tCreatedPromise;
+    assert(tCreatedPayload?.data?.task?.id === wsTaskId, `User A received real-time task:created event for ID: ${wsTaskId}`);
+
+    // User A updates task status to COMPLETED
+    const tStatusPromise = new Promise((resolve) => userASocket.once('task:status_changed', resolve));
+    const tUpdatedPromise = new Promise((resolve) => userASocket.once('task:updated', resolve));
+
+    await fetch(`${BASE_URL}/tasks/${wsTaskId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: 'COMPLETED' }),
+    });
+
+    const tStatusPayload = await tStatusPromise;
+    const tUpdatedPayload = await tUpdatedPromise;
+    assert(tStatusPayload?.data?.task?.status === 'COMPLETED', 'User A received real-time task:status_changed event');
+    assert(tUpdatedPayload?.data?.task?.id === wsTaskId, 'User A received real-time task:updated event');
+
+    // User A updates project
+    const pUpdatedPromise = new Promise((resolve) => userASocket.once('project:updated', resolve));
+    await fetch(`${BASE_URL}/projects/${wsProjId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ title: 'WebSocket Real-Time Architecture (Renamed)' }),
+    });
+    const pUpdatedPayload = await pUpdatedPromise;
+    assert(pUpdatedPayload?.data?.project?.title === 'WebSocket Real-Time Architecture (Renamed)', 'User A received real-time project:updated event');
+
+    // User A deletes task
+    const tDeletedPromise = new Promise((resolve) => userASocket.once('task:deleted', resolve));
+    await fetch(`${BASE_URL}/tasks/${wsTaskId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const tDeletedPayload = await tDeletedPromise;
+    assert(tDeletedPayload?.data?.taskId === wsTaskId, 'User A received real-time task:deleted event');
+
+    // User A deletes project
+    const pDeletedPromise = new Promise((resolve) => userASocket.once('project:deleted', resolve));
+    await fetch(`${BASE_URL}/projects/${wsProjId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const pDeletedPayload = await pDeletedPromise;
+    assert(pDeletedPayload?.data?.projectId === wsProjId, 'User A received real-time project:deleted event');
+
+    // 20.8 Socket.IO Telemetry API
+    const socketStatsRes = await fetch(`${BASE_URL}/socket/stats`);
+    const socketStatsData = await socketStatsRes.json();
+    assert(socketStatsRes.status === 200, 'GET /api/socket/stats returned 200 OK');
+    assert(socketStatsData.data?.activeConnections >= 2, `Socket telemetry active connections is >= 2 (${socketStatsData.data?.activeConnections})`);
+    assert(socketStatsData.data?.eventsEmitted >= 6, `Socket telemetry events emitted is >= 6 (${socketStatsData.data?.eventsEmitted})`);
+
+    // Clean up sockets
+    userASocket.disconnect();
+    userBSocket.disconnect();
 
     console.log(`\n======================================================`);
     console.log(`  Test Results: ${passed} Passed, ${failed} Failed`);

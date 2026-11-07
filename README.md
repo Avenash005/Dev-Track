@@ -8,6 +8,7 @@
 [![PostgreSQL](https://img.shields.io/badge/Relational_DB-PostgreSQL_%2B_Prisma-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![MongoDB](https://img.shields.io/badge/Document_DB-MongoDB_%2B_Mongoose-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com)
 [![Redis](https://img.shields.io/badge/Cache-Redis_7-DC382D?logo=redis&logoColor=white)](https://redis.io)
+[![WebSockets](https://img.shields.io/badge/Real--Time-Socket.IO-010101?logo=socketdotio&logoColor=white)](https://socket.io)
 [![SSR](https://img.shields.io/badge/SSR-React_DOM_Server-000000?logo=react&logoColor=61DAFB)](https://react.dev)
 [![Razorpay](https://img.shields.io/badge/Payments-Razorpay_Test_Mode-02042B?logo=razorpay&logoColor=3395FF)](https://razorpay.com)
 [![Ollama](https://img.shields.io/badge/Local_AI-Ollama_(llama3.2)-FF6F00?logo=ollama&logoColor=white)](https://ollama.com)
@@ -22,6 +23,7 @@ DevTrack AI empowers students to:
 - **Consult Local AI Mentors**: Chat with an offline, locally hosted LLM via Ollama (`llama3.2`) proxied securely through the Express backend, with conversations persisted in MongoDB.
 - **Master Core JavaScript Mechanics**: Explore interactive sandboxes with live execution outputs and quizzes for **Closures**, the **Event Loop**, **Hoisting & TDZ**, and **Promises vs Callbacks**.
 - **Server-Side Rendered (SSR) Public Pages**: Ultra-fast initial page loads with pre-rendered HTML for public showcase pages (`/`, `/explore`, `/p/:id`), complete with server data pre-fetching and client hydration.
+- **WebSocket Real-Time Synchronization**: Instant, full-duplex event broadcasting via Socket.IO for tasks, projects, and dashboard analytics across multiple active browser sessions with user-specific room isolation.
 - **Redis In-Memory Caching (Cache-Aside)**: Sub-millisecond response caching for dashboard metrics, projects, and tasks with per-user tenant isolation, TTL policies, and automated mutation invalidation.
 - **Razorpay Subscription Gateway**: End-to-end payment processing in Test Mode with cryptographic HMAC-SHA256 signature verification for **Free** (₹0), **Pro** (₹149/mo), and **Premium** (₹299/mo) tiers.
 - **Inspect System Architecture**: View database connection telemetry and system metrics in a dark-themed SaaS dashboard (`#09090B` palette).
@@ -35,11 +37,13 @@ DevTrack AI empowers students to:
 - **Styling**: Tailwind CSS (Custom Dark Theme tokens: `#09090B`, `#111113`, `#18181B`, `#27272A`, `#8B5CF6`, `#3B82F6`)
 - **Routing**: React Router DOM (v6)
 - **Icons**: Lucide React
+- **Real-Time Client**: Socket.IO Client (v4.8)
 - **HTTP Client**: Native Fetch API with custom error handling
 
 ### Backend
 - **Runtime**: Node.js (ES Modules)
 - **Framework**: Express.js REST API
+- **Real-Time Gateway**: Socket.IO (v4.8) full-duplex WebSocket server with room isolation
 - **Middleware Pipeline**: Request logging, CORS whitelist, JWT Bearer verification, request payload validation, and centralized error handling
 - **Security**: `bcryptjs` password hashing (10 salt rounds) and stateless `jsonwebtoken` tokens
 
@@ -212,7 +216,7 @@ Open `http://localhost:5173` in your browser.
 
 ## 5. Running Automated API Tests
 
-DevTrack AI includes a comprehensive 69-assertion automated test suite that validates health checks, registration, JWT authentication, duplicate email conflicts (409), unauthorized rejections (401), project CRUD, task foreign-key cascades, dashboard analytics, AI chat, Server-Side Rendered (SSR) public HTML delivery, Razorpay payment order creation, HMAC signature verification, tampering defense, subscription updates, and Redis in-memory caching (cache hits, misses, TTL, user isolation, automated mutation invalidations, and cache telemetry):
+DevTrack AI includes a comprehensive 84-assertion automated test suite that validates health checks, registration, JWT authentication, duplicate email conflicts (409), unauthorized rejections (401), project CRUD, task foreign-key cascades, dashboard analytics, AI chat, Server-Side Rendered (SSR) public HTML delivery, Razorpay payment order creation, HMAC signature verification, tampering defense, subscription updates, Redis in-memory caching (cache hits, misses, TTL, user isolation, automated mutation invalidations, and cache telemetry), and WebSocket real-time communication (Socket.IO authentication, room isolation, full-duplex event dispatch for task and project mutations, and socket telemetry):
 
 ```bash
 cd server
@@ -283,23 +287,43 @@ node test-api.js
   ✔ PASS : POST /api/payment/failure successfully logged failure record
 
 --- Verifying Redis In-Memory Caching (Cache-Aside Pattern) ---
-  ✔ PASS : Cold GET /api/dashboard/stats returned X-Cache: MISS (database query)
-  ✔ PASS : Warm GET /api/dashboard/stats returned X-Cache: HIT (sub-millisecond cache)
-  ✔ PASS : Cached statistics match original payload
-  ✔ PASS : Cold GET /api/projects returned X-Cache: MISS
-  ✔ PASS : Warm GET /api/projects returned X-Cache: HIT
-  ✔ PASS : Cold GET /api/tasks returned X-Cache: MISS
-  ✔ PASS : Warm GET /api/tasks returned X-Cache: HIT
-  ✔ PASS : User isolation verified (User B receives MISS and isolated dataset)
-  ✔ PASS : Creating project invalidated projects cache (subsequent GET is MISS)
-  ✔ PASS : Creating task invalidated tasks, projects, and dashboard stats caches
-  ✔ PASS : Status change to COMPLETED invalidated cache
-  ✔ PASS : Updating task invalidated cache
-  ✔ PASS : Deleting task invalidated cache
-  ✔ PASS : GET /api/cache/stats returned 200 OK with real-time hit/miss telemetry
+  ✔ PASS : GET /api/dashboard/stats (cold) returned 200 OK
+  ✔ PASS : First dashboard stats read returned X-Cache: MISS
+  ✔ PASS : GET /api/dashboard/stats (warm) returned 200 OK
+  ✔ PASS : Second dashboard stats read returned X-Cache: HIT
+  ✔ PASS : First projects read returned X-Cache: MISS
+  ✔ PASS : Second projects read returned X-Cache: HIT
+  ✔ PASS : User B cold stats read returned X-Cache: MISS
+  ✔ PASS : User B data isolated (totalProjects is 0, not User A's count)
+  ✔ PASS : POST /api/projects created project to test invalidation
+  ✔ PASS : Projects read after mutation returned X-Cache: MISS (Invalidated)
+  ✔ PASS : Dashboard stats after project mutation returned X-Cache: MISS
+  ✔ PASS : Dashboard stats re-cached returning X-Cache: HIT
+  ✔ PASS : Tasks read (cold) returned X-Cache: MISS
+  ✔ PASS : Tasks read (warm) returned X-Cache: HIT
+  ✔ PASS : GET /api/cache/stats returned 200 OK
+  ✔ PASS : Cache telemetry recorded multiple cache HITs
+  ✔ PASS : Cache telemetry recorded cache invalidation events
+
+--- Verifying WebSocket Real-Time Communication (Socket.IO) ---
+  ✔ PASS : Unauthorized WebSocket connection correctly rejected
+  ✔ PASS : Tampered token rejected with Authentication error
+  ✔ PASS : User A connected successfully to WebSocket server
+  ✔ PASS : User B connected successfully to WebSocket server
+  ✔ PASS : User A received real-time project:created event for ID: proj-...
+  ✔ PASS : User B received zero events (User room isolation verified)
+  ✔ PASS : User A received real-time task:created event for ID: task-...
+  ✔ PASS : User A received real-time task:status_changed event
+  ✔ PASS : User A received real-time task:updated event
+  ✔ PASS : User A received real-time project:updated event
+  ✔ PASS : User A received real-time task:deleted event
+  ✔ PASS : User A received real-time project:deleted event
+  ✔ PASS : GET /api/socket/stats returned 200 OK
+  ✔ PASS : Socket telemetry active connections is >= 2
+  ✔ PASS : Socket telemetry events emitted is >= 6
 
 ======================================================
-  Test Results: 69 Passed, 0 Failed
+  Test Results: 84 Passed, 0 Failed
 ======================================================
 ```
 
@@ -639,7 +663,116 @@ DevTrack AI adheres to the **Graceful Degradation** design principle:
 
 ---
 
-## 10. Comprehensive Documentation Links
+## 10. WebSocket Real-Time Communication (Socket.IO)
+
+DevTrack AI integrates **Socket.IO (v4.8)** to provide an instant, full-duplex, event-driven real-time communication tier. When a student creates, updates, or deletes tasks and projects in one browser tab or mobile device, updates synchronize immediately across all other active sessions without manual page refreshes or periodic HTTP polling.
+
+```
+ [Browser Session 1 (User A)]               [Browser Session 2 (User A)]
+              │                                          ▲
+              │ 1. POST /api/tasks (New Task)            │
+              ▼                                          │
+    [Express Controller]                                 │
+              │                                          │
+              ├─► 2. Write to PostgreSQL / LocalStore    │
+              ├─► 3. Invalidate Redis Caches             │
+              │                                          │
+              ▼ 4. emitTaskCreated(userId, task)         │
+    [Socket.IO Server Engine]                            │
+              │                                          │
+              └────── 5. Broadcast to room "user:A" ─────┘
+                     Event: "task:created" (Payload: Task)
+                     Instant UI Update + Live Toast
+```
+
+### 10.1 Core Real-Time Fundamentals
+
+* **What is a WebSocket?**: A computer communications protocol providing persistent, full-duplex communication channels over a single long-lived TCP connection (`ws://` or `wss://`). Established via an HTTP 101 Upgrade handshake.
+* **HTTP Polling vs. WebSockets**:
+  | Architectural Dimension | Short / Long HTTP Polling | WebSockets (Socket.IO) |
+  |---|---|---|
+  | **Connection Lifecycle** | Repeated discrete TCP handshakes & HTTP headers (~1KB overhead each) | Single persistent TCP connection established once |
+  | **Latency** | High (bounded by polling interval: 2s–10s) | **Real-time (<10ms)** |
+  | **Server Overhead** | High CPU & network consumption from empty poll requests | Minimal (ephemeral heartbeat pings every 25s) |
+  | **Communication Flow** | Half-duplex (client initiates every exchange) | **Full-duplex** (server and client push simultaneously) |
+* **Socket.IO vs. Native WebSocket**:
+  | Feature | Native HTML5 WebSocket | Socket.IO (DevTrack AI) |
+  |---|---|---|
+  | **Automatic Fallback** | Fails if corporate proxies block WebSocket protocol | Falls back seamlessly to HTTP Long-Polling |
+  | **Auto-Reconnection** | Must be coded manually with exponential backoff | Built-in exponential backoff reconnection engine |
+  | **Rooms & Broadcasting** | Must be manually managed in memory | Built-in native Room & Namespace primitives (`socket.join('user:...')`) |
+  | **Event-Driven API** | String-based `send()` / `onmessage` with manual JSON parsing | Native custom event names (`task:created`, `task:status_changed`) |
+  | **Heartbeats / Keepalive** | Must implement manual ping/pong packets | Automated built-in heartbeat detection |
+
+### 10.2 Handshake & JWT Authentication Pipeline
+
+WebSocket connections are authenticated during the initial HTTP Upgrade handshake:
+1. When the user logs in or hydrates their session, the React client initiates Socket.IO connection:
+   ```javascript
+   // client/src/services/socket.js
+   this.socket = io(SOCKET_URL, {
+     auth: { token: localStorage.getItem('devtrack_token') },
+     transports: ['websocket', 'polling'],
+   });
+   ```
+2. The Express Socket.IO authentication middleware intercepts the connection before completion:
+   ```javascript
+   // server/src/config/socket.js
+   io.use((socket, next) => {
+     const token = socket.handshake.auth?.token;
+     if (!token) return next(new Error('Authentication error: Bearer token is required.'));
+     try {
+       const decoded = jwt.verify(token, env.JWT_SECRET);
+       socket.user = decoded; // { id, email, name }
+       next();
+     } catch (err) {
+       next(new Error('Authentication error: Invalid or expired token.'));
+     }
+   });
+   ```
+3. Connections without valid JWTs are rejected immediately with an authentication error.
+
+### 10.3 User-Specific Room Isolation & Multi-Tenancy
+
+To ensure complete privacy and prevent cross-tenant data leaks:
+* Upon connection, every authenticated socket joins an isolated private room bound to their UUID:
+  ```javascript
+  const userRoom = `user:${socket.user.id}`;
+  socket.join(userRoom);
+  ```
+* All domain events are emitted exclusively to the authenticated user's private room:
+  ```javascript
+  io.to(`user:${userId}`).emit('task:created', { task, timestamp });
+  ```
+* **Security Invariant**: User B can never join `user:A`'s room and will never receive events for User A's tasks or projects.
+
+### 10.4 Real-Time Event Catalog
+
+| Event Name | Trigger Mutation | Payload Schema | Frontend Action in `DataContext` |
+|---|---|---|---|
+| `task:created` | `POST /api/tasks` | `{ data: { task: Object }, timestamp: String }` | Prepends task to `tasks` state; shows toast |
+| `task:updated` | `PUT /api/tasks/:id` | `{ data: { task: Object }, timestamp: String }` | Replaces updated task in `tasks` array |
+| `task:status_changed` | `PUT /api/tasks/:id` (status toggle) | `{ data: { task: Object }, timestamp: String }` | Updates task status badge; updates completion rate |
+| `task:deleted` | `DELETE /api/tasks/:id` | `{ data: { taskId: String }, timestamp: String }` | Filters task out of state; shows warning toast |
+| `project:created` | `POST /api/projects` | `{ data: { project: Object }, timestamp: String }` | Prepends project to `projects` state |
+| `project:updated` | `PUT /api/projects/:id` | `{ data: { project: Object }, timestamp: String }` | Replaces updated project in `projects` state |
+| `project:deleted` | `DELETE /api/projects/:id` | `{ data: { projectId: String }, timestamp: String }` | Filters project and its child tasks out of state |
+| `dashboard:updated` | Any task or project mutation | `{ data: { stats: Object }, timestamp: String }` | Re-fetches activity feed and refreshes telemetry |
+
+### 10.5 Two-Session Real-Time Demonstration Walkthrough
+
+To experience or present DevTrack AI's real-time capabilities in a live demo:
+1. Open DevTrack AI in **Window 1** (`http://localhost:5173`) and log in as `student@university.edu`.
+2. Open an Incognito / Private window in **Window 2** (`http://localhost:5173`) and log in as the **same user**.
+3. In Window 1, navigate to the **Tasks** page and click **"New Task"** -> create *"Implement WebSockets"*.
+4. **Observe Window 2**: Without refreshing, the new task instantly appears at the top of the task list, dashboard stats update, and a sleek *"Real-Time Sync: New task created"* badge animates in the lower right.
+5. In Window 2, toggle the task status to **Completed**.
+6. **Observe Window 1**: The checkbox checks itself, the progress bar moves to 100%, and completion velocity recalculates in real-time.
+7. Open a third window logged in as a **different user**: verify they receive **zero** updates, proving absolute multi-tenant cryptographic room isolation.
+
+---
+
+## 11. Comprehensive Documentation Links
 
 - **[Product Requirements Document (`PRD.md`)](./PRD.md)**: Product vision, user personas, epics, functional and non-functional requirements.
 - **[High-Level Design (`HLD.md`)](./HLD.md)**: C4 diagrams, system topology, polyglot storage rationale, local AI subsystem, and security architecture.
@@ -647,10 +780,10 @@ DevTrack AI adheres to the **Graceful Degradation** design principle:
 - **[System Architecture Guide (`docs/ARCHITECTURE.md`)](./docs/ARCHITECTURE.md)**: Layered architecture, component composition, and data flow.
 - **[Database Models & Schemas (`docs/DATABASE.md`)](./docs/DATABASE.md)**: ER diagrams, foreign key constraints, indexes, and migrations.
 - **[RESTful API Specification (`docs/API.md`)](./docs/API.md)**: Detailed endpoint schemas, request/response bodies, and HTTP status codes.
-- **[Assessment Preparation Guide (`docs/ASSESSMENT-GUIDE.md`)](./docs/ASSESSMENT-GUIDE.md)**: Complete demonstration script and viva defense manual covering all 26 core curriculum topics.
+- **[Assessment Preparation Guide (`docs/ASSESSMENT-GUIDE.md`)](./docs/ASSESSMENT-GUIDE.md)**: Complete demonstration script and viva defense manual covering all 27 core curriculum topics.
 
 ---
 
-## 11. License
+## 12. License
 
 MIT License. Built for software engineering education.

@@ -2,6 +2,7 @@ import { taskService } from '../services/taskService.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import { redisCache } from '../config/redis.js';
 import { cacheKeys, cacheService, CACHE_TTL } from '../services/cacheService.js';
+import { socketEvents } from '../config/socket.js';
 
 export const taskController = {
   async getTasks(req, res, next) {
@@ -61,6 +62,10 @@ export const taskController = {
       // Invalidate relevant user task, project completion, and dashboard caches
       await cacheService.invalidateTaskCaches(req.user.id);
 
+      // Real-time WebSocket emission to authenticated user room
+      socketEvents.emitTaskCreated(req.user.id, task);
+      socketEvents.emitDashboardUpdated(req.user.id);
+
       return apiResponse.created(res, task, 'Task created successfully.');
     } catch (error) {
       next(error);
@@ -69,10 +74,18 @@ export const taskController = {
 
   async updateTask(req, res, next) {
     try {
+      const isStatusChanged = req.body && Object.prototype.hasOwnProperty.call(req.body, 'status');
       const task = await taskService.updateTask(req.user.id, req.params.id, req.body);
 
       // Invalidate relevant user task, project completion, and dashboard caches
       await cacheService.invalidateTaskCaches(req.user.id, req.params.id);
+
+      // Real-time WebSocket emissions
+      socketEvents.emitTaskUpdated(req.user.id, task);
+      if (isStatusChanged) {
+        socketEvents.emitTaskStatusChanged(req.user.id, task);
+      }
+      socketEvents.emitDashboardUpdated(req.user.id);
 
       return apiResponse.success(res, task, 'Task updated successfully.');
     } catch (error) {
@@ -86,6 +99,10 @@ export const taskController = {
 
       // Invalidate relevant user task, project completion, and dashboard caches
       await cacheService.invalidateTaskCaches(req.user.id, req.params.id);
+
+      // Real-time WebSocket emissions
+      socketEvents.emitTaskDeleted(req.user.id, req.params.id);
+      socketEvents.emitDashboardUpdated(req.user.id);
 
       return apiResponse.noContent(res);
     } catch (error) {

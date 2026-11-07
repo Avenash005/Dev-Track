@@ -1,6 +1,6 @@
 # DevTrack AI — Student Assessment Preparation Guide & Demonstration Script
 
-This guide provides a comprehensive preparation script covering all **26 core curriculum topics** (including Server-Side Rendering, Payment Gateway Integration, Docker Containerization, and Redis In-Memory Caching) evaluated during technical presentations, code reviews, and viva examinations.
+This guide provides a comprehensive preparation script covering all **27 core curriculum topics** (including Server-Side Rendering, Payment Gateway Integration, Docker Containerization, Redis In-Memory Caching, and WebSocket Real-Time Communication) evaluated during technical presentations, code reviews, and viva examinations.
 
 ---
 
@@ -178,7 +178,7 @@ This guide provides a comprehensive preparation script covering all **26 core cu
 - **Where to show**: `server/test-api.js`.
 - **Examiner Question**: *"How do you verify that your API meets requirements?"*
 - **Student Answer**:
-  > *"We execute `node test-api.js`, which runs an automated 69-assertion test suite verifying health checks, registration, token generation, 409 duplicate handling, 401 unauthorized rejection, project CRUD, task CRUD, dashboard statistics, AI chat, SSR public HTML pre-rendering, Razorpay payment order creation, signature verification, tampering defense, subscription updates, and Redis in-memory caching (cache hits, misses, TTL, user isolation, and cascade invalidations). Every assertion must pass with 0 failures."*
+  > *"We execute `node test-api.js`, which runs an automated 84-assertion test suite verifying health checks, registration, token generation, 409 duplicate handling, 401 unauthorized rejection, project CRUD, task CRUD, dashboard statistics, AI chat, SSR public HTML pre-rendering, Razorpay payment order creation, signature verification, tampering defense, subscription updates, Redis in-memory caching (cache hits, misses, TTL, user isolation, and cascade invalidations), and WebSocket real-time communication (Socket.IO handshake authentication, user room isolation, and multi-client event broadcasting). Every assertion must pass with 0 failures."*
 
 ---
 
@@ -211,6 +211,14 @@ This guide provides a comprehensive preparation script covering all **26 core cu
 - **Examiner Question**: *"Explain your caching strategy. How do you ensure cache consistency when data changes, and how do you prevent cross-tenant data leaks?"*
 - **Student Answer**:
   > *"We implement the Cache-Aside (lazy loading) pattern using Redis 7. For read operations (such as `GET /api/dashboard/stats`, `GET /api/projects`, `GET /api/tasks`), Express inspects Redis first using `cacheService`. On a cache hit, we return the cached JSON in sub-millisecond time with header `X-Cache: HIT`. On a cache miss, we query PostgreSQL, store the serialized payload in Redis with a Time-To-Live (TTL) of 120s–300s, and return `X-Cache: MISS`.\n\nTo prevent cross-tenant data leaks, all keys are strictly namespaced with the authenticated user's UUID (`devtrack:user:{userId}:...`), ensuring User A can never access User B's cached metrics. To maintain cache consistency and prevent stale data, write operations (`POST`, `PUT`, `DELETE`, status toggles) immediately write to PostgreSQL and trigger automated cascade invalidations via `delPattern()`. For example, modifying a task deletes `devtrack:user:{userId}:tasks:*`, `devtrack:user:{userId}:projects:*` (since project completion percentage updates), and `devtrack:user:{userId}:dashboard:stats`. Furthermore, if Redis is temporarily offline, our client employs an in-memory fallback cache so the Express API never crashes."*
+
+---
+
+### Topic 27: WebSocket Real-Time Communication & Full-Duplex Event Architecture
+- **Where to show**: `server/src/config/socket.js`, `server/src/server.js`, `client/src/services/socket.js`, `client/src/context/DataContext.jsx`, `client/src/components/layout/AppLayout.jsx`.
+- **Examiner Question**: *"How do WebSockets differ from HTTP polling, how do you authenticate WebSocket connections, and how do you prevent User A from seeing User B's events?"*
+- **Student Answer**:
+  > *"HTTP polling is inefficient and half-duplex—it forces clients to repeatedly establish TCP handshakes and dispatch empty HTTP GET requests every few seconds, generating high latency and server load. In contrast, WebSockets provide persistent, full-duplex communication over a single long-lived connection initiated via an HTTP 101 Upgrade handshake.\n\nIn DevTrack AI, we use Socket.IO (v4.8). We authenticate the connection in `server/src/config/socket.js` using an `io.use()` handshake middleware that verifies the client's JWT bearer token against `env.JWT_SECRET`. Unauthorized connections are immediately rejected. Upon successful verification, the socket automatically joins an isolated user room (`user:${socket.user.id}`).\n\nWhen a mutation succeeds in PostgreSQL (such as creating a task or toggling a status), the controller invokes `socketEvents.emitTaskCreated(userId, task)`, broadcasting the event strictly to that user's private room. In the React frontend, `DataContext.jsx` subscribes to these events and updates local state in memory without refreshing the page, while `AppLayout.jsx` renders an animated live sync toast notification."*
 
 ---
 
@@ -350,6 +358,59 @@ This guide provides a comprehensive preparation script covering all **26 core cu
   3. Request by User B returns `X-Cache: MISS` (proving user isolation).
   4. Task creation and status toggle invalidate the cache (subsequent GET returns `X-Cache: MISS`).
   5. `GET /api/cache/stats` returns live telemetry counting hits, misses, and sets.
-- **Reference**: [`server/test-api.js`](file:///d:/Project/server/test-api.js) lines 530-645.
+- **Reference**: [`server/test-api.js`](file:///d:/Project/server/test-api.js) lines 340-440.
+
+---
+
+## Technical Viva Defense: WebSocket Real-Time Communication with Socket.IO (10 Questions & Answers)
+
+### Question 1: What is a WebSocket?
+- **Answer**: A WebSocket is a bidirectional, full-duplex communication protocol (standardized as RFC 6455) providing continuous, low-latency data exchange over a single persistent TCP connection. Unlike HTTP, where the client must initiate every request and close the connection, WebSockets allow either the client or the server to push messages at any time with minimal per-packet header overhead (2 to 10 bytes vs ~1KB for HTTP headers).
+- **Reference**: [`server/src/config/socket.js`](file:///d:/Project/server/src/config/socket.js) lines 1-35.
+
+### Question 2: What is the difference between HTTP polling and WebSockets?
+- **Answer**:
+  - **HTTP Polling (Short/Long)**: The client repeatedly sends HTTP `GET` requests on an interval (e.g., every 3-5s). Most requests return empty data, wasting client CPU, server compute, and network bandwidth. Furthermore, data latency is bounded by the polling frequency.
+  - **WebSockets**: An initial HTTP 101 Upgrade establishes a permanent socket. When a mutation occurs, the server instantly pushes the event to the connected client with single-digit millisecond latency and zero redundant HTTP headers.
+- **Reference**: [`README.md`](file:///d:/Project/README.md) Section 10.1 comparison table.
+
+### Question 3: What does "Full-Duplex" mean?
+- **Answer**: Full-duplex means bidirectional communication can occur simultaneously in both directions without waiting for the other party to finish or reply. In half-duplex communication (such as classic HTTP request-response or walkie-talkies), one party sends while the other receives. In full-duplex WebSockets, the server can push a `task:created` notification to the client at the exact same moment the client is emitting another event.
+- **Reference**: [`server/src/config/socket.js`](file:///d:/Project/server/src/config/socket.js) and [`client/src/services/socket.js`](file:///d:/Project/client/src/services/socket.js).
+
+### Question 4: Why use Socket.IO instead of native HTML5 WebSockets?
+- **Answer**: Socket.IO is a feature-rich real-time application framework built on top of WebSockets that provides crucial production-grade features:
+  1. **Transport Fallback**: Automatically degrades to HTTP long-polling if corporate firewalls or proxies block WebSocket upgrades.
+  2. **Automated Reconnection**: Re-establishes dropped connections with exponential backoff and buffer queuing.
+  3. **Rooms & Namespaces**: Built-in grouping abstractions (`socket.join('user:...')`) without having to implement in-memory tracking structures manually.
+  4. **Event-Driven Multiplexing**: Allows named event channels (`task:created`, `task:status_changed`) rather than raw string parsing.
+- **Reference**: [`README.md`](file:///d:/Project/README.md) Section 10.1 comparison table.
+
+### Question 5: How are WebSocket connections authenticated in DevTrack AI?
+- **Answer**: We authenticate sockets during the initial connection handshake before admitting the client into the event loop. In `server/src/config/socket.js`, we configure an `io.use()` middleware. The client passes their JWT bearer token via `socket.handshake.auth.token`. The middleware verifies the token using `jwt.verify(token, env.JWT_SECRET)`. If missing, expired, or tampered, the connection is aborted with an `Authentication error`. If valid, the user identity is attached to `socket.user`.
+- **Reference**: [`server/src/config/socket.js`](file:///d:/Project/server/src/config/socket.js) lines 45-66.
+
+### Question 6: What are Rooms in Socket.IO and how are they used here?
+- **Answer**: A Room is an arbitrary server-side channel that sockets can join and leave. In DevTrack AI, upon successful authentication, each socket joins a private room named `user:${socket.user.id}`. When user mutations occur, controllers emit events strictly to `io.to('user:' + userId).emit(event, data)`. This isolates data by student and guarantees that multi-tab sessions of the same user receive real-time updates while ensuring User B never receives User A's private notifications.
+- **Reference**: [`server/src/config/socket.js`](file:///d:/Project/server/src/config/socket.js) lines 73-82.
+
+### Question 7: Can you trust client-supplied user IDs in WebSocket events?
+- **Answer**: No. Client input must never be trusted for identity or authorization. In DevTrack AI, the user ID is extracted strictly from the cryptographically verified JWT payload (`socket.user.id`) attached during the handshake middleware. Clients are never allowed to specify which room to join or supply a target `userId` parameter to receive private data.
+- **Reference**: [`server/src/config/socket.js`](file:///d:/Project/server/src/config/socket.js) line 73.
+
+### Question 8: How does the React client avoid duplicate listeners and memory leaks?
+- **Answer**: In `client/src/context/DataContext.jsx`, subscriptions to socket events (`socketService.on('task:created', ...)`) are registered inside a `useEffect` hook. The effect returns a cleanup function that explicitly unsubscribes every listener using `socketService.off('task:created', ...)`. When the component unmounts or authentication state changes, stale listener closures are removed from the event emitter, preventing memory leaks and duplicate handler execution.
+- **Reference**: [`client/src/context/DataContext.jsx`](file:///d:/Project/client/src/context/DataContext.jsx) lines 125-145.
+
+### Question 9: What happens when a user logs out?
+- **Answer**: In `client/src/context/AuthContext.jsx`, the `logout()` function calls `socketService.disconnect()`, immediately tearing down the persistent TCP connection and stripping all active listeners before wiping the local authentication token.
+- **Reference**: [`client/src/context/AuthContext.jsx`](file:///d:/Project/client/src/context/AuthContext.jsx) lines 90-97.
+
+### Question 10: How do you demonstrate and test real-time functionality?
+- **Answer**:
+  1. **Automated Testing**: In `server/test-api.js` (Section 20), we spawn two distinct authenticated socket clients (`User A` and `User B`). When a task is created or updated via the REST API for User A, we assert that User A's socket receives `task:created` and `task:status_changed`, while asserting that User B receives zero events.
+  2. **Live Demonstration**: Open DevTrack AI in two separate browser windows logged into the same account. Creating or updating a task in Window 1 instantly displays in Window 2 with a live sync toast notification without refreshing the page.
+- **Reference**: [`server/test-api.js`](file:///d:/Project/server/test-api.js) lines 440-580 and [`README.md`](file:///d:/Project/README.md) Section 10.5.
+
 
 

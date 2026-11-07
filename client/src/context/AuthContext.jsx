@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { socketService } from '../services/socket';
 
 const AuthContext = createContext(null);
 
@@ -36,6 +37,7 @@ export const AuthProvider = ({ children }) => {
     async function loadUser() {
       if (token) {
         try {
+          socketService.connect(token);
           const res = await api.auth.getMe();
           if (res?.data) {
             setUser(res.data);
@@ -64,6 +66,7 @@ export const AuthProvider = ({ children }) => {
         setToken(authToken);
         localStorage.setItem('devtrack_user', JSON.stringify(authedUser));
         localStorage.setItem('devtrack_token', authToken);
+        socketService.connect(authToken);
         return { success: true, user: authedUser };
       }
       return { success: false, message: 'Invalid response from server.' };
@@ -81,6 +84,7 @@ export const AuthProvider = ({ children }) => {
         setToken(authToken);
         localStorage.setItem('devtrack_user', JSON.stringify(authedUser));
         localStorage.setItem('devtrack_token', authToken);
+        socketService.connect(authToken);
         return { success: true, user: authedUser };
       }
       return { success: false, message: 'Invalid response from server.' };
@@ -90,6 +94,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    socketService.disconnect();
     setUser(null);
     setToken('');
     localStorage.removeItem('devtrack_user');

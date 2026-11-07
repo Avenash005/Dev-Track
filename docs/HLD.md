@@ -45,6 +45,7 @@ flowchart TD
     User -->|HTTPS/HTTP on :5173| WebUI
     User -->|Public GET /, /explore, /p/:id on :5000| APIServer
     WebUI -->|RESTful JSON Calls / Bearer JWT on :5000| APIServer
+    WebUI <-->|Full-Duplex Events / JWT Handshake (Socket.IO)| APIServer
     APIServer -->|Prisma Client| PostgresDB
     APIServer -->|Mongoose ODM| MongoDB
     APIServer -->|Cache-Aside (node-redis)| RedisCache
@@ -66,9 +67,11 @@ flowchart LR
     subgraph ServerContainer["Backend API Container"]
         Router["Express Router & Dispatcher"]
         Middleware["Security & Auth Middleware Stack"]
+        SocketGW["Socket.IO Real-Time Gateway\n(JWT Handshake & User Rooms)"]
         Services["Domain Services Layer"]
         Router --> Middleware
         Middleware --> Services
+        SocketGW --> Services
     end
 
     subgraph DatabaseContainers["Database & Cache Subsystems"]
@@ -82,6 +85,7 @@ flowchart LR
     end
 
     SPA -->|HTTP / JSON (Port 5000)| Router
+    SPA <-->|WebSocket / Socket.IO (Port 5000)| SocketGW
     Services -->|Prisma Connection Pool| PG
     Services -->|Mongoose Connection Pool| MG
     Services -->|TCP Socket (node-redis)| RD
@@ -341,4 +345,52 @@ sequenceDiagram
 1. **Multi-Tenant User Isolation**: Every cache key enforces the schema `devtrack:user:{userId}:<resource>:<identifier>`. No user can ever query or purge another user's cache keys.
 2. **Deterministic Time-To-Live (TTL)**: Keys expire automatically (Dashboard = 300s, Projects = 300s, Tasks = 120s), eliminating zombie cache keys and memory bloat.
 3. **Graceful Fallback**: If Redis crashes or is offline during local evaluation, `redis.js` switches transparently to an in-memory Map cache, preserving 100% API availability.
+
+---
+
+## 10. WebSocket Real-Time Subsystem Architecture
+
+DevTrack AI integrates Socket.IO for multi-client event broadcasting across active sessions:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Student
+    participant Tab1 as Browser Window 1
+    participant Tab2 as Browser Window 2
+    participant SIO as Socket.IO Server
+    participant Express as Express Controller
+    participant DB as PostgreSQL (Prisma)
+
+    rect rgb(24, 24, 27)
+    note over User, SIO: Phase 1: Handshake & JWT Authentication
+    Tab1->>SIO: HTTP 101 Upgrade (auth: { token })
+    SIO->>SIO: io.use(verifyJWT)
+    SIO-->>Tab1: Connected (SocketID: s1)
+    SIO->>SIO: s1.join("user:" + userId)
+    Tab2->>SIO: HTTP 101 Upgrade (auth: { token })
+    SIO->>SIO: io.use(verifyJWT)
+    SIO-->>Tab2: Connected (SocketID: s2)
+    SIO->>SIO: s2.join("user:" + userId)
+    end
+
+    rect rgb(24, 24, 27)
+    note over User, DB: Phase 2: Mutation & Full-Duplex Broadcast
+    User->>Tab1: Creates Task "Implement WebSockets"
+    Tab1->>Express: POST /api/tasks
+    Express->>DB: INSERT INTO Task
+    DB-->>Express: Created Task Record
+    Express->>SIO: socketEvents.emitTaskCreated(userId, task)
+    SIO-->>Tab1: emit("task:created", task)
+    SIO-->>Tab2: emit("task:created", task)
+    note over Tab2: DataContext prepends task & shows Live Sync toast
+    Express-->>Tab1: 201 Created (REST Response)
+    end
+```
+
+### Real-Time Invariants
+- **Handshake Verification**: Unauthenticated socket connections are rejected before admitting sockets into the event loop.
+- **Cryptographic Room Isolation**: Sockets automatically join `user:${userId}`. Clients are never permitted to specify or switch rooms directly.
+- **Transactional Sequencing**: Real-time events are dispatched strictly after successful database writes and cache invalidations.
+
 
