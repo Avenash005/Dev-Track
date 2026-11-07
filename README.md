@@ -249,10 +249,13 @@ node test-api.js
 
 ## 6. Comprehensive Documentation Links
 
-- [System Architecture & Design Patterns (`docs/ARCHITECTURE.md`)](./docs/ARCHITECTURE.md)
-- [Database Models & Schemas (`docs/DATABASE.md`)](./docs/DATABASE.md)
-- [RESTful API Specification (`docs/API.md`)](./docs/API.md)
-- [22-Topic Assessment Preparation Guide (`docs/ASSESSMENT-GUIDE.md`)](./docs/ASSESSMENT-GUIDE.md)
+- **[Product Requirements Document (`PRD.md`)](./PRD.md)**: Product vision, user personas, epics, functional and non-functional requirements.
+- **[High-Level Design (`HLD.md`)](./HLD.md)**: C4 diagrams, system topology, polyglot storage rationale, local AI subsystem, and security architecture.
+- **[Low-Level Design (`LLD.md`)](./LLD.md)**: Class diagrams, Prisma and Mongoose schemas, middleware call stack, and API response contracts.
+- **[System Architecture Guide (`docs/ARCHITECTURE.md`)](./docs/ARCHITECTURE.md)**: Layered architecture, component composition, and data flow.
+- **[Database Models & Schemas (`docs/DATABASE.md`)](./docs/DATABASE.md)**: ER diagrams, foreign key constraints, indexes, and migrations.
+- **[RESTful API Specification (`docs/API.md`)](./docs/API.md)**: Detailed endpoint schemas, request/response bodies, and HTTP status codes.
+- **[22-Topic Assessment Preparation Guide (`docs/ASSESSMENT-GUIDE.md`)](./docs/ASSESSMENT-GUIDE.md)**: Complete demonstration script and viva defense manual covering all 22 topics.
 
 ---
 
