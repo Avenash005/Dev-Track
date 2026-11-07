@@ -2,6 +2,7 @@
 
 > A modern, full-stack productivity and computer science learning management platform engineered for software engineering students and developers.
 
+[![CI](https://github.com/Avenash005/Dev-Track/actions/workflows/ci.yml/badge.svg)](https://github.com/Avenash005/Dev-Track/actions)
 [![React](https://img.shields.io/badge/Frontend-React_18_%2B_Vite-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Node.js](https://img.shields.io/badge/Backend-Node.js_%2B_Express-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![PostgreSQL](https://img.shields.io/badge/Relational_DB-PostgreSQL_%2B_Prisma-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)

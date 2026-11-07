@@ -1,0 +1,50 @@
+name: DevTrack AI Continuous Integration
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-and-test:
+    name: Build Frontend & Verify Backend APIs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Monorepo Dependencies
+        run: npm install
+
+      - name: Generate Prisma Client
+        working-directory: ./server
+        run: npx prisma generate
+
+      - name: Build React Client (Vite)
+        run: npm run client:build
+
+      - name: Start Express Server & Run Automated Test Suite
+        working-directory: ./server
+        run: |
+          node src/server.js &
+          SERVER_PID=$!
+          sleep 4
+          node test-api.js
+          kill $SERVER_PID
+        env:
+          PORT: 5000
+          NODE_ENV: development
+          FRONTEND_URL: http://localhost:5173
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/devtrack_db?schema=public
+          MONGODB_URI: mongodb://localhost:27017/devtrack_ai
+          JWT_SECRET: test_ci_super_secret_jwt_key_2026
+          OLLAMA_BASE_URL: http://localhost:11434
+          OLLAMA_MODEL: llama3.2
