@@ -46,3 +46,4 @@ HEALTHCHECK --interval=20s --timeout=5s --start-period=5s --retries=3 \
 
 # Start Nginx in foreground mode
 CMD ["nginx", "-g", "daemon off;"]
+

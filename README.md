@@ -519,6 +519,236 @@ docker compose down -v
 
 ## 9. Comprehensive Documentation Links
 
+DevTrack AI implements a hybrid rendering architecture:
+- **Client-Side Rendering (CSR)**: Used for authenticated, dynamic dashboard tools (`/dashboard`, `/projects`, `/tasks`, `/ai`, `/learn`, `/pricing`, `/settings`) via React 18 and Vite for smooth SPA state transitions.
+- **Server-Side Rendering (SSR)**: Used for public, indexable landing and showcase pages (`/`, `/explore`, `/p/:id`) pre-rendered directly on the Node.js Express server using `react-dom/server` (`renderToString`).
+
+### SSR Request Lifecycle
+```
+[User Browser]
+       │
+       ▼  1. GET / or GET /explore
+[Express Server]
+       │
+       ├─► 2. Pre-fetch Data from Database (PostgreSQL / localDb store)
+       ├─► 3. React Component Tree rendered via ReactDOMServer.renderToString(element)
+       ├─► 4. Generate Complete HTML Shell + inject window.__INITIAL_DATA__
+       │
+       ▼  5. Complete Pre-rendered HTML Streamed to Browser (Instant FCP)
+[Browser DOM Rendered]
+       │
+       ▼  6. Browser loads /ssr/hydrate-landing.js
+[ReactDOM.hydrateRoot(root, Component)]
+       │
+       ▼  7. Event listeners attached (Interactive Hydration Complete)
+[Interactive Web Page]
+```
+
+### SSR vs CSR Technical Comparison
+| Architectural Dimension | Server-Side Rendering (SSR) | Client-Side Rendering (CSR) |
+|---|---|---|
+| **Primary Target Pages** | Public Landing (`/`), Explore (`/explore`), Project Details (`/p/:id`) | Authenticated App (`/dashboard`, `/projects`, `/tasks`, `/ai`, `/pricing`) |
+| **Initial HTML Response** | Fully formed HTML containing actual titles, stats, and text | Minimal `<div id="root"></div>` shell |
+| **First Contentful Paint (FCP)** | Instant (~5-15ms) on initial request | Delayed until JS bundle downloads and executes (~200-500ms) |
+| **SEO & Social Crawlers** | 100% crawlable without JavaScript execution | Requires crawler JS evaluation |
+| **Data Fetching Timing** | Pre-fetched on server before response dispatch | Fetched asynchronously in `useEffect` on client |
+| **Hydration Mechanics** | `ReactDOM.hydrateRoot()` binds listeners to pre-existing DOM nodes | `ReactDOM.createRoot().render()` creates DOM from scratch |
+| **Implementation Files** | `server/src/ssr/renderer.js`, `server/src/ssr/components/*`, `server/public/ssr/*` | `client/src/App.jsx`, `client/src/main.jsx` |
+
+---
+
+## 7. Payment Gateway Integration (Razorpay Test Mode)
+
+DevTrack AI integrates Razorpay Test Mode with strict server-side cryptographic verification to prevent tampering or unearned subscription upgrades.
+
+### Subscription Plans
+1. **Free Plan** (₹0/mo): 3 projects, 25 tasks per project, standard JavaScript modules.
+2. **Pro Plan** (₹149/mo): Unlimited projects & tasks, accelerated local Ollama mentorship, milestone velocity reports.
+3. **Premium Plan** (₹299/mo): Everything in Pro, 1-on-1 viva defense simulator, deep context memory, and Docker templates.
+
+### Payment Lifecycle & Cryptographic Security
+```
+[User on /pricing]
+       │
+       ▼  1. Click "Upgrade to Pro"
+[Express API: POST /api/payment/create-order] (Authenticated)
+       │
+       ├─► Validates plan ID & user session
+       ├─► Generates unique Razorpay test order ID (e.g. order_test_...)
+       ├─► Calculates exact amount in smallest currency unit (₹149 = 14900 paise)
+       └─► Stores record with status: "CREATED"
+       │
+       ▼  2. Returns { orderId, amount: 14900, currency: "INR", keyId }
+[Razorpay Checkout SDK Modal (Client)]
+       │
+       ├─► User submits test payment (Card / NetBanking / UPI)
+       └─► Razorpay returns { razorpay_order_id, razorpay_payment_id, razorpay_signature }
+       │
+       ▼  3. POST /api/payment/verify (Authenticated)
+[Express API: Cryptographic Verification]
+       │
+       ├─► Recomputes expected signature:
+       │     crypto.createHmac('sha256', RAZORPAY_KEY_SECRET)
+       │           .update(razorpay_order_id + '|' + razorpay_payment_id)
+       │           .digest('hex')
+       │
+       ├─► Timing-Safe Buffer Comparison:
+       │     crypto.timingSafeEqual(expectedBuffer, actualBuffer)
+       │
+       ├─► IF MISMATCH: Rejects with 400 Bad Request, marks payment "FAILED"
+       └─► IF MATCH: Marks payment "SUCCESS", activates 30-day Subscription in PostgreSQL
+       │
+       ▼  4. Returns 200 OK + Updated Subscription
+[Client / Dashboard]
+       │
+       └─► React AuthContext refreshes badge: PRO Active
+```
+
+### Key Security Implementations
+- **Zero Key Leakage**: `RAZORPAY_KEY_SECRET` resides strictly in `server/.env`.
+- **Timing-Safe Comparison**: `crypto.timingSafeEqual` prevents timing attacks on signatures.
+- **Relational Integrity**: `Payment` and `Subscription` models are bound to the authenticated `User` with PostgreSQL foreign key constraints.
+- **Tampering Invariant**: Subscriptions cannot be activated without a mathematically valid signature signed with the server's private secret.
+
+---
+
+## 8. Complete Docker Containerization & Orchestration
+
+DevTrack AI provides complete, production-ready Docker containerization orchestrating the frontend, backend, PostgreSQL database, MongoDB database, and Ollama local AI runtime in an isolated, reproducible environment.
+
+### 8.1 Core Containerization Concepts
+* **What is Docker?**: An open-source containerization platform that packages applications and their full runtime dependencies (system binaries, libraries, configuration) into standardized executable units called containers.
+* **What is Containerization?**: Operating-system-level virtualization that isolates processes using Linux kernel namespaces and cgroups. Unlike traditional Virtual Machines (VMs) which emulate an entire guest operating system and virtual hardware, containers share the host OS kernel, resulting in near-instant boot times (~1-3s) and minimal CPU/memory overhead.
+* **Image vs. Container**:
+  * **Docker Image**: An immutable, read-only, multi-layered template containing source code, runtime, libraries, environment variables, and configuration files.
+  * **Docker Container**: A live, runnable instance of an image. When started, Docker adds a thin, writeable container layer on top of the immutable image layers.
+
+### 8.2 Service Topology (`docker-compose.yml`)
+
+```
+                          [User Host Browser]
+                                   │
+              ┌────────────────────┴────────────────────┐
+              ▼ :80 / :5173                             ▼ :5000
+    ┌───────────────────┐                     ┌───────────────────┐
+    │ devtrack_frontend │                     │  devtrack_backend │
+    │   (Nginx 1.27)    │───/api/ reverse────►│ (Express.js API)  │
+    └───────────────────┘       proxy         └───────────────────┘
+              │                                         │
+              │                                         │
+  ════════════╪═════════════════════════════════════════╪══════════════════
+              │     devtrack-network (Bridge DNS)       │
+              └──────────────────┬──────────────────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         ▼                       ▼                       ▼
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│devtrack_postgres │   │ devtrack_mongodb │   │  devtrack_ollama │
+│ (PostgreSQL 16)  │   │   (MongoDB 7.0)  │   │  (Ollama Daemon) │
+└──────────────────┘   └──────────────────┘   └──────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+ ┌───────────────┐       ┌───────────────┐       ┌───────────────┐
+ │postgres_data  │       │  mongo_data   │       │ ollama_models │
+ │ (Named Volume)│       │ (Named Volume)│       │ (Named Volume)│
+ └───────────────┘       └───────────────┘       └───────────────┘
+```
+
+| Service | Container Name | Base Image | Internal Port | Host Port | Purpose |
+|---|---|---|---|---|---|
+| **frontend** | `devtrack_frontend` | `nginx:1.27-alpine` (multi-stage) | `80` | `80:80`, `5173:80` | Serves compiled React 18 production bundle, proxies `/api/` & SSR |
+| **backend** | `devtrack_backend` | `node:20-alpine` | `5000` | `5000:5000` | Node.js Express API, Prisma ORM, SSR rendering, JWT auth |
+| **postgres** | `devtrack_postgres` | `postgres:16-alpine` | `5432` | `5432:5432` | Relational storage for Users, Projects, Tasks, Subscriptions |
+| **mongodb** | `devtrack_mongodb` | `mongo:7.0` | `27017` | `27017:27017` | Document database for AI conversation threads & message histories |
+| **ollama** | `devtrack_ollama` | `ollama/ollama:latest` | `11434` | `11434:11434` | Local LLM inference engine serving `llama3.2` |
+
+### 8.3 Dockerfiles Implementation
+
+#### Frontend Multi-Stage Build ([`client/Dockerfile`](file:///d:/Project/client/Dockerfile))
+* **Stage 1 (`builder`)**: Uses `node:20-alpine`, installs dependencies, and compiles the React + Vite static bundle into `/app/dist`.
+* **Stage 2 (`runner`)**: Uses `nginx:1.27-alpine`, copies the compiled bundle to `/usr/share/nginx/html`, and applies a custom [`client/nginx.conf`](file:///d:/Project/client/nginx.conf) providing Single-Page Application routing (`try_files $uri $uri/ /index.html;`), gzip compression, and reverse proxying for `/api/` to `http://backend:5000/api/`.
+
+#### Backend Production Image ([`server/Dockerfile`](file:///d:/Project/server/Dockerfile))
+* Uses `node:20-alpine` with `openssl` and `libc6-compat` libraries required for the Prisma query engine.
+* Runs `npx prisma generate` to build the platform-specific Linux musl Prisma client.
+* Switches to a non-root system user (`USER node`) for security best practices.
+* Implements an HTTP health check probe via `wget --spider http://localhost:5000/api/health`.
+
+### 8.4 Docker Networking & Service Discovery
+* All containers join an isolated bridge network: `devtrack-network`.
+* Containers communicate using internal Docker DNS service names rather than `localhost`:
+  * PostgreSQL: `postgres:5432` (Connection string: `postgresql://postgres:postgres@postgres:5432/devtrack_db?schema=public`)
+  * MongoDB: `mongodb:27017` (URI: `mongodb://mongodb:27017/devtrack_ai`)
+  * Ollama: `http://ollama:11434`
+  * Express API: `http://backend:5000`
+
+### 8.5 Data Persistence with Named Volumes
+Data survives container lifecycle events (stop, destroy, rebuild) via Docker named volumes:
+* `devtrack_postgres_data`: Persists PostgreSQL relational tables at `/var/lib/postgresql/data`.
+* `devtrack_mongo_data`: Persists MongoDB collections and B-Tree indexes at `/data/db`.
+* `devtrack_ollama_models`: Persists downloaded LLM model weights (e.g., ~2.0 GB for `llama3.2`) at `/root/.ollama` so models are not re-downloaded upon container restart.
+
+### 8.6 Health Checks & Startup Ordering
+Services declare health checks so dependent services only start when dependencies are genuinely ready:
+```yaml
+depends_on:
+  postgres:
+    condition: service_healthy
+  mongodb:
+    condition: service_healthy
+  ollama:
+    condition: service_started
+```
+* **Postgres**: Validated via `pg_isready -U postgres -d devtrack_db`.
+* **MongoDB**: Validated via `mongosh --eval 'db.adminCommand("ping")'`.
+* **Backend**: Validated via `wget --spider http://localhost:5000/api/health`.
+* **Frontend**: Validated via `wget --spider http://localhost/health`.
+
+### 8.7 Step-by-Step Docker Commands
+
+#### 1. Validate Configuration
+```bash
+docker compose config
+```
+
+#### 2. Build and Start All Containers in Background
+```bash
+docker compose up -d --build
+```
+
+#### 3. Inspect Container Status & Health
+```bash
+docker compose ps
+```
+
+#### 4. Pull the Local AI Model into the Persistent Volume
+```bash
+docker compose exec ollama ollama pull llama3.2
+```
+> **Note on GPU Access**: Ollama runs on CPU by default in standard Docker Desktop configurations. On Linux workstations with an NVIDIA GPU and `nvidia-container-toolkit` installed, GPU passthrough can be enabled by adding `deploy: resources: reservations: devices: - driver: nvidia, count: all, capabilities: [gpu]` under the `ollama` service in `docker-compose.yml`.
+
+#### 5. Stream Container Logs
+```bash
+# View logs from all services:
+docker compose logs -f
+
+# View logs from backend only:
+docker compose logs -f backend
+```
+
+#### 6. Stop and Clean Up Containers
+```bash
+# Stop containers (preserves volume data):
+docker compose down
+
+# Stop containers and remove named volumes (clean reset):
+docker compose down -v
+```
+
+---
+
+## 9. Comprehensive Documentation Links
+
 - **[Product Requirements Document (`PRD.md`)](./PRD.md)**: Product vision, user personas, epics, functional and non-functional requirements.
 - **[High-Level Design (`HLD.md`)](./HLD.md)**: C4 diagrams, system topology, polyglot storage rationale, local AI subsystem, and security architecture.
 - **[Low-Level Design (`LLD.md`)](./LLD.md)**: Class diagrams, Prisma and Mongoose schemas, middleware call stack, and API response contracts.
